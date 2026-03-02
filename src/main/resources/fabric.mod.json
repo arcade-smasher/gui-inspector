@@ -26,7 +26,7 @@
 	"accessWidener": "guiinspector.accesswidener",
 	"depends": {
 		"fabricloader": ">=0.18.4",
-		"minecraft": ">=1.21",
+		"minecraft": "~1.21.11",
 		"java": ">=21",
 		"fabric-api": "*"
 	}

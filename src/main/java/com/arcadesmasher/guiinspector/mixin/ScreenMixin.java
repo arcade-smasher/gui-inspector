@@ -12,6 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import javax.swing.tree.DefaultMutableTreeNode;
 
+// unused in place of afterRender event in GUIInspector
 @Mixin(Screen.class)
 public class ScreenMixin {
 

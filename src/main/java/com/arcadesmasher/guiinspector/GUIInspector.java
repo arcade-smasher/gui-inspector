@@ -239,6 +239,7 @@ public class GUIInspector implements ClientModInitializer {
 	}
 
 	private void afterInit(MinecraftClient client, Screen screen) {
+
 		removeHook = (object) -> {
 			if (object instanceof Element element) screen.remove(element);
 		};
@@ -266,6 +267,25 @@ public class GUIInspector implements ClientModInitializer {
 		};
 
 		refreshHook.run();
+
+		ScreenEvents.afterRender(screen).register((scr, context, mouseX, mouseY, tickDelta) -> {
+			DefaultMutableTreeNode selectedWidget = GUIInspector.widgets.getSelectedNode();
+			if (selectedWidget != null && selectedWidget.getUserObject() instanceof Widget widget) {
+				GUIInspector.drawOutline(context, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
+			}
+
+			DefaultMutableTreeNode selectedDrawCall = GUIInspector.drawCalls.getSelectedNode();
+			if (selectedDrawCall != null) {
+				Object userObj = selectedDrawCall.getUserObject();
+				if (userObj instanceof NodeData data) data.drawOutline(context);
+			}
+
+			if (!GUIInspector.selectorMode) return;
+
+			for (Widget widget : GUIInspector.findAllDeepestWidgetsAt(screen.children(), mouseX, mouseY)) {
+				GUIInspector.drawOutline(context, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
+			}
+		});
 
 		ScreenEvents.remove(screen).register((scr) -> {
 			widgets.getRootNode().setUserObject(null);
