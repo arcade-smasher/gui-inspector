@@ -1,0 +1,33 @@
+{
+	"schemaVersion": 1,
+	"id": "guiinspector",
+	"version": "${version}",
+	"name": "GUI Inspector",
+	"description": "Tool for developers to inspect GUI elements of Screens",
+	"authors": [
+		"Arcadesmasher"
+	],
+	"contact": {
+		"homepage": "https://modrinth.com/mod/gui-inspector",
+		"sources": "https://github.com/arcade-smasher/gui-inspector",
+		"issues": "https://github.com/arcade-smasher/gui-inspector/issues"
+	},
+	"license": "MIT",
+	"icon": "assets/guiinspector/icon.png",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"com.arcadesmasher.guiinspector.GUIInspector"
+		]
+	},
+	"mixins": [
+		"guiinspector.mixins.json"
+	],
+	"accessWidener": "guiinspector.accesswidener",
+	"depends": {
+		"fabricloader": ">=0.18.4",
+		"minecraft": ">=1.21",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}

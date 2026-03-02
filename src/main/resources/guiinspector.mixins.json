@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "package": "com.arcadesmasher.guiinspector.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ScreenMixin",
+    "DrawContextMixin",
+    "MinecraftClientMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
