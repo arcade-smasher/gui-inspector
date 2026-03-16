@@ -1,14 +1,25 @@
 package com.arcadesmasher.guiinspector;
 
+import com.arcadesmasher.guiinspector.data.rowdata.DefaultRowData;
+import com.arcadesmasher.guiinspector.data.rowdata.RowData;
+import com.arcadesmasher.guiinspector.input.*;
+import com.arcadesmasher.guiinspector.mixin.AbstractWidgetAccessor;
+import com.arcadesmasher.guiinspector.mixin.CenteredFlatWidgetAccessor;
+import com.arcadesmasher.guiinspector.mixin.Dim2iAccessor;
+import com.arcadesmasher.guiinspector.mixin.FlatButtonWidgetAccessor;
+import com.arcadesmasher.guiinspector.data.nodedata.AlternatingDisplayNodeData;
+import com.arcadesmasher.guiinspector.data.nodedata.DrawCallData;
 import com.arcadesmasher.guiinspector.data.FriendlyDisplay;
-import com.arcadesmasher.guiinspector.data.NodeData;
+import com.arcadesmasher.guiinspector.data.nodedata.NodeData;
 import com.arcadesmasher.guiinspector.mappings.ClassMappings;
 import com.arcadesmasher.guiinspector.tree.TreePanel;
 import com.arcadesmasher.guiinspector.tree.TreeWindow;
+import com.mojang.blaze3d.opengl.GlStateManager;
 import net.fabricmc.api.ClientModInitializer;
 
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Element;
@@ -16,14 +27,24 @@ import net.minecraft.client.gui.ParentElement;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.Widget;
+import net.minecraft.client.texture.GlTexture;
+import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.swing.*;
+import javax.swing.event.TreeSelectionEvent;
 import javax.swing.tree.DefaultMutableTreeNode;
-import java.util.ArrayList;
+import java.awt.*;
+import java.awt.image.BufferedImage;
+import java.nio.ByteBuffer;
+import java.util.*;
 import java.util.List;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
+
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE;
 
 public class GUIInspector implements ClientModInitializer {
 	public static final String MOD_ID = "guiinspector";
@@ -33,7 +54,7 @@ public class GUIInspector implements ClientModInitializer {
 	// That way, it's clear which mod wrote info, warnings, and errors.
 	public static final Logger LOGGER = LoggerFactory.getLogger(MOD_ID);
 
-	public static ArrayList<Widget> activeWidgets = new ArrayList<>();
+	public static ArrayList<Object> activeWidgets = new ArrayList<>();
 
 	public static boolean selectorMode = false;
 
@@ -41,8 +62,17 @@ public class GUIInspector implements ClientModInitializer {
 	public static TreePanel widgets;
 	public static TreePanel drawCalls;
 
+	public static TreeBuilder treeBuilder;
+
+	public static boolean drawCallViewIsTree = true;
+	public static boolean drawCallNamesAreSimple = true;
+
 	public static boolean drawCapture = false;
 	public static boolean pendingCapture = false;
+
+	private static boolean sodiumLoaded;
+
+	private static Consumer<TreeSelectionEvent> selectionListener;
 
 	public Runnable refreshHook;
 	public Consumer<Object> removeHook;
@@ -50,6 +80,8 @@ public class GUIInspector implements ClientModInitializer {
 
 	@Override
 	public void onInitializeClient() {
+
+		sodiumLoaded = FabricLoader.getInstance().isModLoaded("sodium");
 
 		System.setProperty("java.awt.headless", "false");
 
@@ -64,7 +96,7 @@ public class GUIInspector implements ClientModInitializer {
 		widgets.showSideMenu();
 		drawCalls.hideSideMenu();
 
-		widgets.addSelectionListener(e -> {
+		selectionListener = e -> {
 			widgets.clearSideMenu();
 			DefaultMutableTreeNode selectedNode = widgets.getSelectedNode();
 			if (selectedNode == null) return;
@@ -76,31 +108,84 @@ public class GUIInspector implements ClientModInitializer {
 			}
 			if (object instanceof Widget widget) {
 				widgets.addSideMenuEntry("");
-				widgets.addSideMenuEntry("x: " + widget.getX());
-				widgets.addSideMenuEntry("y: " + widget.getY());
-				widgets.addSideMenuEntry("width: " + widget.getWidth());
-				widgets.addSideMenuEntry("height: " + widget.getHeight());
+				widgets.addSideMenuEntry(new DefaultRowData<>(widget::getX, widget::setX, "x: ", Integer.class)); // TODO: refactor the rest of the code to use DefaultRowData and also make DefaultRowData correctly detected when selecting widgets
+				widgets.addSideMenuEntry(new DefaultRowData<>(widget::getY, widget::setY, "y: ", Integer.class));
+				addSideMenuWidthHeightSetterEntry(widget, WidthHeightRegistry.Enum.WIDTH);
+				addSideMenuWidthHeightSetterEntry(widget, WidthHeightRegistry.Enum.HEIGHT);
+			} else if (object instanceof DimensionedMirror dimensionedMirror) {
+				Dim2iAccessor dim2iAccessor = (Dim2iAccessor) (Object) dimensionedMirror.getDim2i();
+				widgets.addSideMenuEntry("");
+				assert dim2iAccessor != null;
+				widgets.addSideMenuEntry(new DefaultRowData<>(dimensionedMirror::getX, dim2iAccessor::setX, "x: ", Integer.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(dimensionedMirror::getY, dim2iAccessor::setY, "y: ", Integer.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(dimensionedMirror::getWidth, dim2iAccessor::setWidth, "width: ", Integer.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(dimensionedMirror::getHeight, dim2iAccessor::setHeight, "height: ", Integer.class));
+//				widgets.addSideMenuEntry("x: " + dimensionedMirror.getX());
+//				widgets.addSideMenuEntry("y: " + dimensionedMirror.getY());
+//				widgets.addSideMenuEntry("width: " + dimensionedMirror.getWidth());
+//				widgets.addSideMenuEntry("height: " + dimensionedMirror.getHeight());
+			}
+			if (sodiumLoaded) {
+				if (object instanceof AbstractWidgetAccessor abstractWidgetAccessor) {
+					widgets.addSideMenuEntry("");
+					widgets.addSideMenuEntry(new DefaultRowData<>(abstractWidgetAccessor::getHovered, abstractWidgetAccessor::setHovered, "Hovered: ", Boolean.class));
+				}
+				if (object instanceof CenteredFlatWidgetAccessor centeredFlatWidgetAccessor) {
+					widgets.addSideMenuEntry("");
+					widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::isVisible, centeredFlatWidgetAccessor::invokeSetVisible, "Visible: ", Boolean.class));
+					widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::isSelected, centeredFlatWidgetAccessor::invokeSetSelected, "Selected: ", Boolean.class));
+					widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::isSelectable, centeredFlatWidgetAccessor::setIsSelectable, "Selectable: ", Boolean.class));
+					widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::isEnabled, centeredFlatWidgetAccessor::invokeSetEnabled, "Enabled: ", Boolean.class));
+					Text label = centeredFlatWidgetAccessor.getLabel();
+					if (label != null) {
+						widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::getLabel, centeredFlatWidgetAccessor::setLabel, "Raw label: ", Text.class));
+						widgets.addSideMenuEntry("Label: " + label.getString());
+					}
+					Text subtitle = centeredFlatWidgetAccessor.getSubtitle();
+					if (subtitle != null) {
+						widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::getSubtitle, centeredFlatWidgetAccessor::setSubtitle, "Raw subtitle: ", Text.class));
+						widgets.addSideMenuEntry("Subtitle: " + subtitle.getString());
+					}
+				}
+				if (object instanceof FlatButtonWidgetAccessor flatButtonWidgetAccessor) {
+					widgets.addSideMenuEntry("");
+					widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::getVisible, flatButtonWidgetAccessor::invokeSetVisible, "Visible: ", Boolean.class));
+					widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::isSelected, flatButtonWidgetAccessor::invokeSetSelected, "Selected: ", Boolean.class));
+					widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::isEnabled, flatButtonWidgetAccessor::invokeSetEnabled, "Enabled: ", Boolean.class));
+					widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::shouldDrawBackground, flatButtonWidgetAccessor::setShouldDrawBackground, "Draw background: ", Boolean.class));
+					widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::shouldDrawFrame, flatButtonWidgetAccessor::setShouldDrawFrame, "Draw frame: ", Boolean.class));
+					Text label = flatButtonWidgetAccessor.getLabel();
+					if (label != null) {
+						widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::getLabel, flatButtonWidgetAccessor::setLabel, "Raw label: ", Text.class));
+						widgets.addSideMenuEntry("Label: " + label.getString());
+					}
+				}
 			}
 			if (object instanceof ClickableWidget clickableWidget) {
 				widgets.addSideMenuEntry("");
-				widgets.addSideMenuEntry("Visible: " + clickableWidget.visible);
-				widgets.addSideMenuEntry("Active: " + clickableWidget.active);
-				widgets.addSideMenuEntry("Alpha: " + clickableWidget.getAlpha());
-				widgets.addSideMenuEntry("Focused: " + clickableWidget.isFocused());
+				widgets.addSideMenuEntry(new DefaultRowData<>(() -> clickableWidget.visible, visible -> clickableWidget.visible = visible, "Visible: ", Boolean.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(() -> clickableWidget.active, active -> clickableWidget.active = active, "Active: ", Boolean.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(clickableWidget::getAlpha, clickableWidget::setAlpha, "Alpha: ", Float.class));
 				widgets.addSideMenuEntry("Selected: " + clickableWidget.isSelected());
 				widgets.addSideMenuEntry("Interactable: " + clickableWidget.isInteractable());
-				widgets.addSideMenuEntry("Raw message: " + clickableWidget.getMessage());
+				widgets.addSideMenuEntry(new DefaultRowData<>(clickableWidget::getMessage, clickableWidget::setMessage, "Raw message: ", Text.class));
 				widgets.addSideMenuEntry("Message: " + clickableWidget.getMessage().getString());
 			}
-		});
+			if (object instanceof Element element) {
+				widgets.addSideMenuEntry("");
+				widgets.addSideMenuEntry("Focused: " + element.isFocused()); // TODO: Make registry to set focused value (Element does not provide a setFocused interface)
+			}
+		};
+
+		widgets.addSelectionListener(selectionListener::accept);
 
 		JButton removeBtn = new JButton("Remove");
-		JButton toggleVisibilityBtn = new JButton("Toggle Visibility");
+		JButton modifyValueBtn = new JButton("Modify Value");
 		JButton refreshBtn = new JButton("Refresh");
 		JButton inspectBtn = new JButton("Inspect");
 
 		widgets.getToolbar().add(removeBtn);
-		widgets.getToolbar().add(toggleVisibilityBtn);
+		widgets.getToolbar().add(modifyValueBtn);
 		widgets.getToolbar().add(refreshBtn);
 		widgets.getToolbar().add(inspectBtn);
 
@@ -126,26 +211,65 @@ public class GUIInspector implements ClientModInitializer {
 			widgets.removeNode(selected);
 		});
 
-		toggleVisibilityBtn.addActionListener(e -> {
-			DefaultMutableTreeNode selected = widgets.getSelectedNode();
-			if (selected == null || selected == widgets.getRootNode()) {
+		@SuppressWarnings("unchecked")
+		Map<Class<?>, BiFunction<RowData<?>, Frame, Optional<?>>> handlers = Map.of(
+				Integer.class, (rd, frame) -> IntInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Integer>) rd).getter().get()),
+				Float.class, (rd, frame) -> FloatInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Float>) rd).getter().get()),
+				Double.class, (rd, frame) -> DoubleInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Double>) rd).getter().get()),
+				Boolean.class, (rd, frame) -> BooleanInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Boolean>) rd).getter().get()),
+				Text.class, (rd, frame) -> TextInputDialog.show(frame, "Modify Value", ((RowData<Text>) rd).getter().get()),
+				String.class, (rd, frame) -> StringInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<String>) rd).getter().get())
+		);
+
+		modifyValueBtn.addActionListener(e -> {
+			Object selectedValue = widgets.getSideMenuList().getSelectedValue();
+			if (selectedValue == null) {
 				JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
-						"Select a node to toggle visibility.", "No Selection",
+						"Select an entry to modify.", "No Selection",
 						JOptionPane.WARNING_MESSAGE);
 				return;
 			}
-			int result = JOptionPane.showConfirmDialog(
-					SwingUtilities.getWindowAncestor(widgets),
-					"This may cause unintended behavior. Are you sure?",
-					"Warning",
-					JOptionPane.YES_NO_OPTION,
-					JOptionPane.WARNING_MESSAGE
-			);
-			if (result == JOptionPane.YES_OPTION) {
-				if (toggleVisibilityHook != null) {
-					toggleVisibilityHook.accept(selected.getUserObject());
+			if (selectedValue instanceof RowData<?> rd) { // TODO: Add more types, refactor to be DRY
+				var handler = handlers.get(rd.getType());
+				if (handler != null) {
+					@SuppressWarnings("unchecked")
+					Optional<Object> result = (Optional<Object>) handler.apply(rd, treeWindow.getFrame());
+					result.ifPresent(r -> {
+						@SuppressWarnings("unchecked")
+						RowData<Object> typedRow = (RowData<Object>) rd;
+						typedRow.setter().accept(r);
+						selectionListener.accept(null);
+					});
+				} else {
+					JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
+							"Unhandled type: " + ClassMappings.getMappedName(rd.getType()) + ". Please report this to the developer along with the error message.", "Unhandled Type",
+							JOptionPane.WARNING_MESSAGE);
+					LOGGER.error("Unhandled type: {}. Please report this to the developer along with the error message.", ClassMappings.getMappedName(rd.getType()));
 				}
+			} else {
+				JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
+						"Unmodifiable entry.", "Unmodifiable",
+						JOptionPane.WARNING_MESSAGE);
 			}
+//			DefaultMutableTreeNode selected = widgets.getSelectedNode();
+//			if (selected == null || selected == widgets.getRootNode()) {
+//				JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
+//						"Select a node to toggle visibility.", "No Selection",
+//						JOptionPane.WARNING_MESSAGE);
+//				return;
+//			}
+//			int result = JOptionPane.showConfirmDialog(
+//					SwingUtilities.getWindowAncestor(widgets),
+//					"This may cause unintended behavior. Are you sure?",
+//					"Warning",
+//					JOptionPane.YES_NO_OPTION,
+//					JOptionPane.WARNING_MESSAGE
+//			);
+//			if (result == JOptionPane.YES_OPTION) {
+//				if (toggleVisibilityHook != null) {
+//					toggleVisibilityHook.accept(selected.getUserObject());
+//				}
+//			}
 		});
 
 		inspectBtn.addActionListener(e -> {
@@ -172,14 +296,77 @@ public class GUIInspector implements ClientModInitializer {
 		});
 
 		JButton captureBtn = new JButton("Capture");
+		JButton namesSwitchBtn = new JButton("Detailed names");
+		JButton viewSwitchBtn = new JButton("Linear view");
+		JButton clearBtn = new JButton("Clear");
 
 		drawCalls.getToolbar().add(captureBtn);
+		drawCalls.getToolbar().add(namesSwitchBtn);
+		drawCalls.getToolbar().add(viewSwitchBtn);
+		drawCalls.getToolbar().add(clearBtn);
 
 		captureBtn.addActionListener(e -> {
+			if (JOptionPane.showConfirmDialog(
+					SwingUtilities.getWindowAncestor(drawCalls),
+					"This will clear the currently captured draw calls. Are you sure?",
+					"Confirmation",
+					JOptionPane.OK_CANCEL_OPTION,
+					JOptionPane.WARNING_MESSAGE
+			) == JOptionPane.CANCEL_OPTION) return;
 			System.out.println("Capturing!");
-			GUIInspector.drawCalls.showSideMenu();
-			GUIInspector.drawCalls.clear();
+			drawCalls.showSideMenu();
+			drawCalls.clear();
 			pendingCapture = true;
+		});
+
+		namesSwitchBtn.addActionListener(e -> {
+			if (treeBuilder == null) return;
+			if (drawCallNamesAreSimple) {
+				drawCallNamesAreSimple = false;
+				namesSwitchBtn.setText("Simple names");
+			} else {
+				drawCallNamesAreSimple = true;
+				namesSwitchBtn.setText("Detailed names");
+			}
+			Enumeration<?> enumeration = drawCalls.getRootNode().depthFirstEnumeration();
+			while (enumeration.hasMoreElements()) {
+				DefaultMutableTreeNode node = (DefaultMutableTreeNode) enumeration.nextElement();
+				if (node.getUserObject() instanceof AlternatingDisplayNodeData alternatingDisplayNodeData) {
+					alternatingDisplayNodeData.setAltDisplay(drawCallNamesAreSimple);
+					drawCalls.getTreeModel().nodeChanged(node);
+				}
+			}
+		});
+
+		viewSwitchBtn.addActionListener(e -> {
+			if (treeBuilder == null) return;
+			drawCalls.clear();
+			if (drawCallViewIsTree) {
+				drawCallViewIsTree = false;
+				viewSwitchBtn.setText("Tree view");
+				treeBuilder.buildFlatTree(drawCalls);
+			} else {
+				drawCallViewIsTree = true;
+				viewSwitchBtn.setText("Linear view");
+				treeBuilder.buildTree(drawCalls);
+			}
+			javax.swing.SwingUtilities.invokeLater(() -> {
+				for (int i = GUIInspector.drawCalls.getTree().getRowCount() - 1; i > 0; i--) {
+					GUIInspector.drawCalls.getTree().collapseRow(i);
+				}
+			});
+		});
+
+		clearBtn.addActionListener(e -> {
+			if (JOptionPane.showConfirmDialog(
+					SwingUtilities.getWindowAncestor(drawCalls),
+					"This will clear the currently captured draw calls. Are you sure?",
+					"Confirmation",
+					JOptionPane.OK_CANCEL_OPTION,
+					JOptionPane.WARNING_MESSAGE
+			) == JOptionPane.CANCEL_OPTION) return;
+			drawCalls.hideSideMenu();
+			drawCalls.clear();
 		});
 
 		treeWindow.show();
@@ -241,7 +428,35 @@ public class GUIInspector implements ClientModInitializer {
 	private void afterInit(MinecraftClient client, Screen screen) {
 
 		removeHook = (object) -> {
-			if (object instanceof Element element) screen.remove(element);
+			if (!(object instanceof Element target)) return;
+
+			Consumer<ParentElement> traverseAndRemove = new Consumer<>() {
+				@Override
+				public void accept(ParentElement parent) {
+					Iterator<? extends Element> it = parent.children().iterator();
+					while (it.hasNext()) {
+						Element child = it.next();
+
+						if (child == target) {
+							try {
+								it.remove();
+							} catch (UnsupportedOperationException e) {
+								javax.swing.JOptionPane.showMessageDialog(
+										null,
+										"The element cannot be removed. The containing list is immutable.",
+										"Cannot Remove",
+										javax.swing.JOptionPane.WARNING_MESSAGE
+								);
+								return;
+							}
+						} else if (child instanceof ParentElement pe) {
+							accept(pe);
+						}
+					}
+				}
+			};
+
+			traverseAndRemove.accept(screen);
 		};
 		toggleVisibilityHook = (object) -> {
 			if (object instanceof ClickableWidget widget) widget.visible = !widget.visible;
@@ -269,21 +484,33 @@ public class GUIInspector implements ClientModInitializer {
 		refreshHook.run();
 
 		ScreenEvents.afterRender(screen).register((scr, context, mouseX, mouseY, tickDelta) -> {
-			DefaultMutableTreeNode selectedWidget = GUIInspector.widgets.getSelectedNode();
-			if (selectedWidget != null && selectedWidget.getUserObject() instanceof Widget widget) {
-				GUIInspector.drawOutline(context, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
+			DefaultMutableTreeNode selectedWidget = widgets.getSelectedNode();
+			if (selectedWidget != null) {
+				Object userObject = selectedWidget.getUserObject();
+
+				if (userObject instanceof Widget widget) {
+					drawOutline(context, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
+				} else if (sodiumLoaded && SodiumCompat.isDimensioned(userObject)) {
+					int[] dimensions = SodiumCompat.getDimensions(userObject);
+					drawOutline(context, dimensions[0], dimensions[1], dimensions[2], dimensions[3]);
+				}
 			}
 
-			DefaultMutableTreeNode selectedDrawCall = GUIInspector.drawCalls.getSelectedNode();
+			DefaultMutableTreeNode selectedDrawCall = drawCalls.getSelectedNode();
 			if (selectedDrawCall != null) {
 				Object userObj = selectedDrawCall.getUserObject();
-				if (userObj instanceof NodeData data) data.drawOutline(context);
+				if (userObj instanceof DrawCallData data) data.drawOutline(context);
 			}
 
-			if (!GUIInspector.selectorMode) return;
+			if (!selectorMode) return;
 
-			for (Widget widget : GUIInspector.findAllDeepestWidgetsAt(screen.children(), mouseX, mouseY)) {
-				GUIInspector.drawOutline(context, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
+			for (Object object : findAllDeepestWidgetsAt(screen.children(), mouseX, mouseY)) {
+				if (object instanceof Widget widget) {
+					drawOutline(context, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
+				} else if (sodiumLoaded && SodiumCompat.isDimensioned(object)) {
+					int[] dimensions = SodiumCompat.getDimensions(object);
+					drawOutline(context, dimensions[0], dimensions[1], dimensions[2], dimensions[3]);
+				}
 			}
 		});
 
@@ -294,15 +521,20 @@ public class GUIInspector implements ClientModInitializer {
 		});
 	}
 
-	public static List<Widget> findAllDeepestWidgetsAt(List<?> widgets, double x, double y) {
-		List<Widget> deepestWidgets = new ArrayList<>();
+	private static void addSideMenuWidthHeightSetterEntry(Widget widget, WidthHeightRegistry.Enum widthHeight) {
+		Consumer<Integer> setter = WidthHeightRegistry.getSetter(widthHeight, widget);
+		widgets.addSideMenuEntry(new DefaultRowData<>(widthHeight == WidthHeightRegistry.Enum.WIDTH ? widget::getWidth : widget::getHeight, setter, widthHeight.getValue() + ": ", Integer.class));
+	}
+
+	public static List<Object> findAllDeepestWidgetsAt(List<?> widgets, double x, double y) {
+		List<Object> deepestWidgets = new ArrayList<>();
 
 		for (Object obj : widgets) {
 			if (obj instanceof Widget widget && x >= widget.getX() && x <= (widget.getX() + widget.getWidth())
-					&& y >= widget.getY() && y <= (widget.getY() + widget.getHeight())) {
+											&&	y >= widget.getY() && y <= (widget.getY() + widget.getHeight())) {
 				if (widget instanceof ParentElement parent) {
 					// Recursively check children
-					List<Widget> childrenDeepest = findAllDeepestWidgetsAt(parent.children(), x, y);
+					List<Object> childrenDeepest = findAllDeepestWidgetsAt(parent.children(), x, y);
 					if (!childrenDeepest.isEmpty()) {
 						deepestWidgets.addAll(childrenDeepest);
 					} else {
@@ -312,6 +544,22 @@ public class GUIInspector implements ClientModInitializer {
 				} else {
 					// Not a parent, so it's deepest
 					deepestWidgets.add(widget);
+				}
+			} else if (sodiumLoaded && SodiumCompat.isDimensioned(obj)) {
+				int[] dimensions = SodiumCompat.getDimensions(obj);
+				if (x >= dimensions[0] && x <= (dimensions[0] + dimensions[2])
+				&&	y >= dimensions[1] && y <= (dimensions[1] + dimensions[3])) {
+					if (obj instanceof ParentElement parent) {
+						List<Object> childrenDeepest = findAllDeepestWidgetsAt(parent.children(), x, y);
+						if (!childrenDeepest.isEmpty()) {
+							deepestWidgets.addAll(childrenDeepest);
+						} else {
+							deepestWidgets.add(obj);
+						}
+					} else {
+						deepestWidgets.add(obj);
+					}
+
 				}
 			}
 		}
@@ -342,6 +590,12 @@ public class GUIInspector implements ClientModInitializer {
 				System.out.println("  ".repeat(depth) + "y:      " + widget.getY());
 				System.out.println("  ".repeat(depth) + "width:  " + widget.getWidth());
 				System.out.println("  ".repeat(depth) + "height: " + widget.getHeight());
+			} else if (sodiumLoaded && SodiumCompat.isDimensioned(object)) {
+				int[] dimensions = SodiumCompat.getDimensions(object);
+				System.out.println("  ".repeat(depth) + "x: " + dimensions[0]);
+				System.out.println("  ".repeat(depth) + "y: " + dimensions[1]);
+				System.out.println("  ".repeat(depth) + "width: " + dimensions[2]);
+				System.out.println("  ".repeat(depth) + "height: " + dimensions[3]);
 			}
 			if (object instanceof ParentElement parentElement) {
 				System.out.println("  ".repeat(depth) + "CHILDREN:");
@@ -368,5 +622,62 @@ public class GUIInspector implements ClientModInitializer {
 		context.fill(left, top, left + 1, bottom, red);
 		// right
 		context.fill(right - 1, top, right, bottom, red);
+	}
+
+	public static BufferedImage getTextureSubregion(GlTexture texture, int mipLevel, float u1, float v1, float u2, float v2) {
+		int texWidth = texture.getWidth(mipLevel);
+		int texHeight = texture.getHeight(mipLevel);
+		int glId = texture.getGlId();
+
+		float uMin = Math.min(u1, u2);
+		float uMax = Math.max(u1, u2);
+		float vMin = Math.min(v1, v2);
+		float vMax = Math.max(v1, v2);
+
+		// Convert UVs to pixel coordinates
+		int xStart = (int) Math.floor(uMin * texWidth);
+		int xEnd   = (int) Math.ceil(uMax * texWidth);
+		int yStart = (int) Math.floor(vMin * texHeight);
+		int yEnd   = (int) Math.ceil(vMax * texHeight);
+
+		int width  = xEnd - xStart;
+		int height = yEnd - yStart;
+
+		// Clamp to texture bounds
+		width = Math.max(0, Math.min(width, texWidth - xStart));
+		height = Math.max(0, Math.min(height, texHeight - yStart));
+
+		if (width == 0 || height == 0) {
+			System.err.println("Skipped invalid texture subregion: " + xStart + "," + yStart + " -> " + xEnd + "," + yEnd);
+			return null; // or fallback
+		}
+
+		// Bind the texture
+		GlStateManager._bindTexture(glId);
+
+		// Read the full texture (OpenGL doesn't provide sub-region read, so we read full and crop)
+		ByteBuffer buffer = ByteBuffer.allocateDirect(texWidth * texHeight * 4);
+		glGetTexImage(GL_TEXTURE_2D, mipLevel, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+
+		// Create BufferedImage for the subregion
+		BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+
+		// Copy pixels (flip vertically)
+		for (int y = 0; y < height; y++) {
+			for (int x = 0; x < width; x++) {
+				int srcX = xStart + x;
+				int srcY = yStart + y;
+				int i = (srcY * texWidth + srcX) * 4;
+				int r = buffer.get(i) & 0xFF;
+				int g = buffer.get(i + 1) & 0xFF;
+				int b = buffer.get(i + 2) & 0xFF;
+				int a = buffer.get(i + 3) & 0xFF;
+				int argb = (a << 24) | (r << 16) | (g << 8) | b;
+				image.setRGB(x, y, argb);
+			}
+		}
+
+		GlStateManager._bindTexture(0);
+		return image;
 	}
 }

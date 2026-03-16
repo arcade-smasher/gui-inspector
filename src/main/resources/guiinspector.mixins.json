@@ -3,7 +3,13 @@
   "package": "com.arcadesmasher.guiinspector.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "AbstractWidgetAccessor",
+    "AbstractWidgetMixin",
+    "CenteredFlatWidgetAccessor",
+    "ClickableWidgetAccessor",
+    "Dim2iAccessor",
     "DrawContextMixin",
+    "FlatButtonWidgetAccessor",
     "MinecraftClientMixin"
   ],
   "injectors": {
