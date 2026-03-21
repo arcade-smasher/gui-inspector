@@ -3,12 +3,8 @@ package com.arcadesmasher.guiinspector;
 import com.arcadesmasher.guiinspector.data.rowdata.DefaultRowData;
 import com.arcadesmasher.guiinspector.data.rowdata.RowData;
 import com.arcadesmasher.guiinspector.input.*;
-import com.arcadesmasher.guiinspector.mixin.AbstractWidgetAccessor;
-import com.arcadesmasher.guiinspector.mixin.CenteredFlatWidgetAccessor;
-import com.arcadesmasher.guiinspector.mixin.Dim2iAccessor;
-import com.arcadesmasher.guiinspector.mixin.FlatButtonWidgetAccessor;
+import com.arcadesmasher.guiinspector.mixin.*;
 import com.arcadesmasher.guiinspector.data.nodedata.AlternatingDisplayNodeData;
-import com.arcadesmasher.guiinspector.data.nodedata.DrawCallData;
 import com.arcadesmasher.guiinspector.data.FriendlyDisplay;
 import com.arcadesmasher.guiinspector.data.nodedata.NodeData;
 import com.arcadesmasher.guiinspector.mappings.ClassMappings;
@@ -25,9 +21,12 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.Element;
 import net.minecraft.client.gui.ParentElement;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.screen.ingame.HandledScreen;
 import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.Widget;
 import net.minecraft.client.texture.GlTexture;
+import net.minecraft.item.ItemStack;
+import net.minecraft.screen.slot.Slot;
 import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,7 +69,7 @@ public class GUIInspector implements ClientModInitializer {
 	public static boolean drawCapture = false;
 	public static boolean pendingCapture = false;
 
-	private static boolean sodiumLoaded;
+	public static boolean sodiumLoaded;
 
 	private static Consumer<TreeSelectionEvent> selectionListener;
 
@@ -108,7 +107,7 @@ public class GUIInspector implements ClientModInitializer {
 			}
 			if (object instanceof Widget widget) {
 				widgets.addSideMenuEntry("");
-				widgets.addSideMenuEntry(new DefaultRowData<>(widget::getX, widget::setX, "x: ", Integer.class)); // TODO: refactor the rest of the code to use DefaultRowData and also make DefaultRowData correctly detected when selecting widgets
+				widgets.addSideMenuEntry(new DefaultRowData<>(widget::getX, widget::setX, "x: ", Integer.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(widget::getY, widget::setY, "y: ", Integer.class));
 				addSideMenuWidthHeightSetterEntry(widget, WidthHeightRegistry.Enum.WIDTH);
 				addSideMenuWidthHeightSetterEntry(widget, WidthHeightRegistry.Enum.HEIGHT);
@@ -120,10 +119,6 @@ public class GUIInspector implements ClientModInitializer {
 				widgets.addSideMenuEntry(new DefaultRowData<>(dimensionedMirror::getY, dim2iAccessor::setY, "y: ", Integer.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(dimensionedMirror::getWidth, dim2iAccessor::setWidth, "width: ", Integer.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(dimensionedMirror::getHeight, dim2iAccessor::setHeight, "height: ", Integer.class));
-//				widgets.addSideMenuEntry("x: " + dimensionedMirror.getX());
-//				widgets.addSideMenuEntry("y: " + dimensionedMirror.getY());
-//				widgets.addSideMenuEntry("width: " + dimensionedMirror.getWidth());
-//				widgets.addSideMenuEntry("height: " + dimensionedMirror.getHeight());
 			}
 			if (sodiumLoaded) {
 				if (object instanceof AbstractWidgetAccessor abstractWidgetAccessor) {
@@ -173,7 +168,17 @@ public class GUIInspector implements ClientModInitializer {
 			}
 			if (object instanceof Element element) {
 				widgets.addSideMenuEntry("");
-				widgets.addSideMenuEntry("Focused: " + element.isFocused()); // TODO: Make registry to set focused value (Element does not provide a setFocused interface)
+				widgets.addSideMenuEntry(new DefaultRowData<>(element::isFocused, element::setFocused, "Focused: ", Boolean.class));
+			}
+			if (object instanceof Slot slot) {
+				SlotAccessor slotAccessor = (SlotAccessor) slot;
+				widgets.addSideMenuEntry("");
+				widgets.addSideMenuEntry(new DefaultRowData<>(slot::getIndex, warnBreakingSetter(slotAccessor::setIndex), "index: ", Integer.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(() -> slot.x, slotAccessor::setX, "x: ", Integer.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(() -> slot.y, slotAccessor::setY, "y: ", Integer.class));
+				widgets.addSideMenuEntry("Contains: ");
+				widgets.addSideMenuEntry(new DefaultRowData<>(() -> slot.inventory.getStack(slotAccessor.getIndex()), itemStack -> slot.inventory.setStack(slotAccessor.getIndex(), itemStack), "ItemStack: ", ItemStack.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(() -> slot.inventory.getStack(slotAccessor.getIndex()).getCount(), value -> slot.inventory.getStack(slotAccessor.getIndex()).setCount(value), "Count: ", Integer.class));
 			}
 		};
 
@@ -217,20 +222,21 @@ public class GUIInspector implements ClientModInitializer {
 				Float.class, (rd, frame) -> FloatInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Float>) rd).getter().get()),
 				Double.class, (rd, frame) -> DoubleInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Double>) rd).getter().get()),
 				Boolean.class, (rd, frame) -> BooleanInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Boolean>) rd).getter().get()),
+				String.class, (rd, frame) -> StringInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<String>) rd).getter().get()),
 				Text.class, (rd, frame) -> TextInputDialog.show(frame, "Modify Value", ((RowData<Text>) rd).getter().get()),
-				String.class, (rd, frame) -> StringInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<String>) rd).getter().get())
+				ItemStack.class, (rd, frame) -> ItemStackInputDialog.show(frame, "Modify Value", ((RowData<ItemStack>) rd).getter().get())
 		);
 
 		modifyValueBtn.addActionListener(e -> {
 			Object selectedValue = widgets.getSideMenuList().getSelectedValue();
 			if (selectedValue == null) {
 				JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
-						"Select an entry to modify.", "No Selection",
+						"Select an entry in the details pane to modify.", "No Selection",
 						JOptionPane.WARNING_MESSAGE);
 				return;
 			}
-			if (selectedValue instanceof RowData<?> rd) { // TODO: Add more types, refactor to be DRY
-				var handler = handlers.get(rd.getType());
+			if (selectedValue instanceof RowData<?> rd) {
+				var handler = handlers.get(rd.type());
 				if (handler != null) {
 					@SuppressWarnings("unchecked")
 					Optional<Object> result = (Optional<Object>) handler.apply(rd, treeWindow.getFrame());
@@ -242,34 +248,15 @@ public class GUIInspector implements ClientModInitializer {
 					});
 				} else {
 					JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
-							"Unhandled type: " + ClassMappings.getMappedName(rd.getType()) + ". Please report this to the developer along with the error message.", "Unhandled Type",
+							"Unhandled type: " + ClassMappings.getMappedName(rd.type()) + ". Please report this to the developer along with the error message.", "Unhandled Type",
 							JOptionPane.WARNING_MESSAGE);
-					LOGGER.error("Unhandled type: {}. Please report this to the developer along with the error message.", ClassMappings.getMappedName(rd.getType()));
+					LOGGER.error("Unhandled type: {}. Please report this to the developer along with the error message.", ClassMappings.getMappedName(rd.type()));
 				}
 			} else {
 				JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
 						"Unmodifiable entry.", "Unmodifiable",
 						JOptionPane.WARNING_MESSAGE);
 			}
-//			DefaultMutableTreeNode selected = widgets.getSelectedNode();
-//			if (selected == null || selected == widgets.getRootNode()) {
-//				JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
-//						"Select a node to toggle visibility.", "No Selection",
-//						JOptionPane.WARNING_MESSAGE);
-//				return;
-//			}
-//			int result = JOptionPane.showConfirmDialog(
-//					SwingUtilities.getWindowAncestor(widgets),
-//					"This may cause unintended behavior. Are you sure?",
-//					"Warning",
-//					JOptionPane.YES_NO_OPTION,
-//					JOptionPane.WARNING_MESSAGE
-//			);
-//			if (result == JOptionPane.YES_OPTION) {
-//				if (toggleVisibilityHook != null) {
-//					toggleVisibilityHook.accept(selected.getUserObject());
-//				}
-//			}
 		});
 
 		inspectBtn.addActionListener(e -> {
@@ -350,7 +337,7 @@ public class GUIInspector implements ClientModInitializer {
 				viewSwitchBtn.setText("Linear view");
 				treeBuilder.buildTree(drawCalls);
 			}
-			javax.swing.SwingUtilities.invokeLater(() -> {
+			SwingUtilities.invokeLater(() -> {
 				for (int i = GUIInspector.drawCalls.getTree().getRowCount() - 1; i > 0; i--) {
 					GUIInspector.drawCalls.getTree().collapseRow(i);
 				}
@@ -371,6 +358,7 @@ public class GUIInspector implements ClientModInitializer {
 
 		treeWindow.show();
 
+		// maybe add some sort of key combo for inspector mode later?
 //		ClientTickEvents.END_CLIENT_TICK.register(client -> {
 //			while (toggleKey.wasPressed()) {
 //				selectorMode = !selectorMode;
@@ -387,9 +375,9 @@ public class GUIInspector implements ClientModInitializer {
 			ScreenMouseEvents.allowMouseClick(screen).register((scr, click) -> {
 				if (selectorMode) {
 					activeWidgets.clear();
-					activeWidgets.ensureCapacity(screen.children().size());
+					activeWidgets.ensureCapacity(scr.children().size());
 
-                    activeWidgets.addAll(findAllDeepestWidgetsAt(screen.children(), click.x(), click.y()));
+                    activeWidgets.addAll(findAllDeepestWidgetsAt(scr.children(), click.x(), click.y()));
 
 					selectorMode = false;
 					System.out.println("GUI Inspector: OFF");
@@ -405,8 +393,8 @@ public class GUIInspector implements ClientModInitializer {
 							}
 							widgets.setSelectedNode(selectedWidget, s -> {
 								if (!s) {
-									System.out.println(ClassMappings.getMappedName(screen));
-									logWidgets(screen.children());
+									System.out.println(ClassMappings.getMappedName(scr));
+									logWidgets(scr.children());
 								}
 							});
 						});
@@ -419,10 +407,19 @@ public class GUIInspector implements ClientModInitializer {
 
 		});
 
-		ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+		ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> afterInit(client, screen));
+	}
 
-			afterInit(client, screen);
-		});
+	private <T> Consumer<T> warnBreakingSetter(Consumer<T> setter) {
+		return object -> {
+			if (JOptionPane.showConfirmDialog(SwingUtilities.getWindowAncestor(widgets),
+					"This may potentially break things. Are you sure?",
+					"Warning",
+					JOptionPane.YES_NO_OPTION,
+					JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION) {
+				setter.accept(object);
+			}
+		};
 	}
 
 	private void afterInit(MinecraftClient client, Screen screen) {
@@ -441,11 +438,11 @@ public class GUIInspector implements ClientModInitializer {
 							try {
 								it.remove();
 							} catch (UnsupportedOperationException e) {
-								javax.swing.JOptionPane.showMessageDialog(
+								JOptionPane.showMessageDialog(
 										null,
 										"The element cannot be removed. The containing list is immutable.",
 										"Cannot Remove",
-										javax.swing.JOptionPane.WARNING_MESSAGE
+										JOptionPane.WARNING_MESSAGE
 								);
 								return;
 							}
@@ -462,7 +459,7 @@ public class GUIInspector implements ClientModInitializer {
 			if (object instanceof ClickableWidget widget) widget.visible = !widget.visible;
 		};
 
-		refreshHook = () -> { // TODO: This refresh thing is problematic. If a screen child is removed, it will still be referenced until refresh is called. I'm not sure if the GC will properly collect it once we refresh, so put a WeakReference on it to check this, if it doesn't GC then fix the method to auto-refresh when children are removed.
+		refreshHook = () -> {
 
 			System.out.println("refresh");
 
@@ -479,45 +476,35 @@ public class GUIInspector implements ClientModInitializer {
 			widgets.getRootNode().setUserObject(screen);
 
 			treeWidgets(screen.children(), widgets.getRootNode());
+			if (screen instanceof HandledScreen<?> handledScreen) {
+				for (Slot slot : handledScreen.getScreenHandler().slots) {
+					widgets.addNode(slot);
+				}
+			}
 		};
 
 		refreshHook.run();
 
 		ScreenEvents.afterRender(screen).register((scr, context, mouseX, mouseY, tickDelta) -> {
-			DefaultMutableTreeNode selectedWidget = widgets.getSelectedNode();
-			if (selectedWidget != null) {
-				Object userObject = selectedWidget.getUserObject();
 
-				if (userObject instanceof Widget widget) {
-					drawOutline(context, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
-				} else if (sodiumLoaded && SodiumCompat.isDimensioned(userObject)) {
-					int[] dimensions = SodiumCompat.getDimensions(userObject);
-					drawOutline(context, dimensions[0], dimensions[1], dimensions[2], dimensions[3]);
-				}
-			}
+			if (!GUIInspector.selectorMode) return;
 
-			DefaultMutableTreeNode selectedDrawCall = drawCalls.getSelectedNode();
-			if (selectedDrawCall != null) {
-				Object userObj = selectedDrawCall.getUserObject();
-				if (userObj instanceof DrawCallData data) data.drawOutline(context);
-			}
-
-			if (!selectorMode) return;
-
-			for (Object object : findAllDeepestWidgetsAt(screen.children(), mouseX, mouseY)) {
+			for (Object object : GUIInspector.findAllDeepestWidgetsAt(scr.children(), mouseX, mouseY)) {
 				if (object instanceof Widget widget) {
-					drawOutline(context, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
-				} else if (sodiumLoaded && SodiumCompat.isDimensioned(object)) {
+					GUIInspector.drawOutline(context, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
+				} else if (GUIInspector.sodiumLoaded && SodiumCompat.isDimensioned(object)) {
 					int[] dimensions = SodiumCompat.getDimensions(object);
-					drawOutline(context, dimensions[0], dimensions[1], dimensions[2], dimensions[3]);
+					GUIInspector.drawOutline(context, dimensions[0], dimensions[1], dimensions[2], dimensions[3]);
 				}
 			}
 		});
 
 		ScreenEvents.remove(screen).register((scr) -> {
-			widgets.getRootNode().setUserObject(null);
+			widgets.getRootNode().setUserObject((FriendlyDisplay) () -> "No screen active");
+			widgets.clear();
 			refreshHook = null;
 			removeHook = null;
+			toggleVisibilityHook = null;
 		});
 	}
 

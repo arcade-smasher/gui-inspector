@@ -10,9 +10,18 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gl.GpuSampler;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.tooltip.TooltipComponent;
+import net.minecraft.client.gui.tooltip.TooltipPositioner;
 import net.minecraft.client.texture.GlTexture;
 import net.minecraft.client.texture.TextureSetup;
+import net.minecraft.entity.LivingEntity;
+import net.minecraft.item.ItemStack;
 import net.minecraft.text.OrderedText;
+import net.minecraft.util.Identifier;
+import net.minecraft.world.World;
+import org.joml.Matrix3x2f;
+import org.joml.Vector2f;
+import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
@@ -118,31 +127,66 @@ public class DrawContextMixin {
 
 		List<StackWalker.StackFrame> frames = getFrames();
 
-		int[] argb = decodeColor(color);
-		int a1 = argb[0], r1 = argb[1], g1 = argb[2], b1 = argb[3];
-
-		String gradientInfo;
-		if (color2 != null) {
-			int[] argb2 = decodeColor(color2);
-			gradientInfo = String.format(
-					"Gradient:\n\tStart: 0x%08X RGBA(%d,%d,%d,%d)\n\tEnd:   0x%08X RGBA(%d,%d,%d,%d)",
-					color, r1, g1, b1, a1,
-					color2, argb2[1], argb2[2], argb2[3], argb2[0]
-			);
-		} else {
-			gradientInfo = String.format(
-					"Solid Color:\n\t0x%08X RGBA(%d,%d,%d,%d)",
-					color, r1, g1, b1, a1
-			);
-		}
-
-		DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
-
-		Class<?> skipClass = GUIInspector.class; // the class that draws this mod's outline around objects. stack traces containing it are skipped because it means the stack can't have any meaningful info for the user
-
-		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(skipClass));
+		// the class that draws this mod's outline around objects. stack traces containing it are skipped because it means the stack can't have any meaningful info for the user
+		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(GUIInspector.class));
 
 		if (!shouldSkip) {
+
+			int[] argb = decodeColor(color);
+			int a1 = argb[0], r1 = argb[1], g1 = argb[2], b1 = argb[3];
+
+			String gradientInfo;
+			if (color2 != null) {
+				int[] argb2 = decodeColor(color2);
+				gradientInfo = String.format(
+						"Gradient:\n\tStart: 0x%08X RGBA(%d,%d,%d,%d)\n\tEnd:   0x%08X RGBA(%d,%d,%d,%d)",
+						color, r1, g1, b1, a1,
+						color2, argb2[1], argb2[2], argb2[3], argb2[0]
+				);
+			} else {
+				gradientInfo = String.format(
+						"Solid Color:\n\t0x%08X RGBA(%d,%d,%d,%d)",
+						color, r1, g1, b1, a1
+				);
+			}
+
+			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
+
+			DrawContext context = ((DrawContext) (Object) this);
+
+			Vector2f screenPos1 = new Vector2f(x1, y1);
+			Vector2f screenPos2 = new Vector2f(x2, y2);
+
+			context.getMatrices().transformPosition(screenPos1, screenPos1);
+			context.getMatrices().transformPosition(screenPos2, screenPos2);
+
+			boolean screenDifferent = Math.round(screenPos1.x) != x1 || Math.round(screenPos1.y) != y1 || Math.round(screenPos2.x) != x2 || Math.round(screenPos2.y) != y2;
+
+			// someone is going to hate me for this
+			Object[] details = new Object[15 + (screenDifferent ? 4 : 0)];
+			int j = 0;
+			details[j++] = "Captured: fill(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/texture/TextureSetup;IIIIILjava/lang/Integer;)V";
+			details[j++] = "";
+			details[j++] = "Screen Rect:";
+			details[j++] = String.format("\tTop-left: (%d, %d)", x1, y1);
+			details[j++] = String.format("\tBottom-right: (%d, %d)", x2, y2);
+			details[j++] = String.format("\tSize: %d x %d", x2 - x1, y2 - y1);
+			if (screenDifferent) {
+				details[j++] = "";
+				details[j++] = String.format("\tOn-screen top-left: (%d, %d)", Math.round(screenPos1.x), Math.round(screenPos1.y));
+				details[j++] = String.format("\tOn-screen bottom-right: (%d, %d)", Math.round(screenPos2.x), Math.round(screenPos2.y));
+				details[j++] = String.format("\tOn-screen size: %d x %d", Math.round(screenPos2.x - screenPos1.x), Math.round(screenPos2.y - screenPos1.y));
+			}
+			details[j++] = "";
+			details[j++] = gradientInfo;
+			details[j++] = "";
+			details[j++] = "Pipeline:";
+			details[j++] = "\t" + ClassMappings.getMappedName(pipeline) + "@" + Integer.toHexString(pipeline.hashCode());
+			details[j++] = "";
+			details[j++] = "TextureSetup:";
+			details[j++] = "\t" + ClassMappings.getMappedName(textureSetup) + "@" + Integer.toHexString(textureSetup.hashCode());
+			details[j] = "";
+
 			for (int i = 0; i < frames.size(); i++) {
 				StackWalker.StackFrame frame = frames.get(i);
 				String label = buildFrameLabel(frame);
@@ -154,24 +198,8 @@ public class DrawContextMixin {
 
 					data = new FillData(
 							label, simpleLabel,
-							combineDetails(new Object[] {
-									"Captured: fill(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/texture/TextureSetup;IIIIILjava/lang/Integer;)V",
-									"",
-									"Screen Rect:",
-									String.format("\tTop-left: (%d, %d)", x1, y1),
-									String.format("\tBottom-right: (%d, %d)", x2, y2),
-									String.format("\tSize: %d x %d", x2 - x1, y2 - y1),
-									"",
-									gradientInfo,
-									"",
-									"Pipeline:",
-									"\t" + ClassMappings.getMappedName(pipeline) + "@" + Integer.toHexString(pipeline.hashCode()),
-									"",
-									"TextureSetup:",
-									"\t" + ClassMappings.getMappedName(textureSetup) + "@" + Integer.toHexString(textureSetup.hashCode()),
-									""
-							}, buildGenericFrameDetails(frame, label)),
-							x1, y1, x2, y2
+							combineDetails(details, buildGenericFrameDetails(frame, label)),
+							Math.round(screenPos1.x), Math.round(screenPos1.y), Math.round(screenPos2.x), Math.round(screenPos2.y)
 					);
 				} else {
 					data = new SimpleAlternatingDisplayNodeData(
@@ -194,24 +222,54 @@ public class DrawContextMixin {
 
 		List<StackWalker.StackFrame> frames = getFrames();
 
-		StringBuilder builder = new StringBuilder();
-		text.accept((index, style, codePoint) -> {
-			builder.appendCodePoint(codePoint);
-			return true;
-		});
-		String content = builder.toString();
-
-		int width = textRenderer.getWidth(text);
-		int[] argb = decodeColor(color);
-		int a = argb[0], r = argb[1], g = argb[2], b = argb[3];
-
-		DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
-
-		Class<?> skipClass = GUIInspector.class;
-
-		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(skipClass));
+		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(GUIInspector.class));
 
 		if (!shouldSkip) {
+
+			StringBuilder builder = new StringBuilder();
+			text.accept((index, style, codePoint) -> {
+				builder.appendCodePoint(codePoint);
+				return true;
+			});
+			String content = builder.toString();
+
+			int width = textRenderer.getWidth(text);
+			int[] argb = decodeColor(color);
+			int a = argb[0], r = argb[1], g = argb[2], b = argb[3];
+
+			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
+
+			Vector2f screenPos = new Vector2f(x, y);
+			((DrawContext) (Object) this).getMatrices().transformPosition(screenPos, screenPos);
+
+			boolean screenDifferent = Math.round(screenPos.x) != x || Math.round(screenPos.y) != y;
+
+			Object[] details = new Object[19 + (screenDifferent ? 2 : 0)];
+			int j = 0;
+			details[j++] = "Captured: drawText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/OrderedText;IIIZ)V";
+			details[j++] = "";
+			details[j++] = "Text:";
+			details[j++] = String.format("\t\"%s\"", content);
+			details[j++] = "";
+			details[j++] = "Position:";
+			details[j++] = String.format("\t(x, y): (%d, %d)", x, y);
+			details[j++] = String.format("\tWidth: %d px", width);
+			if (screenDifferent) {
+				details[j++] = "";
+				details[j++] = String.format("\tOn-screen (x, y): (%d, %d)", Math.round(screenPos.x), Math.round(screenPos.y));
+			}
+			details[j++] = "";
+			details[j++] = "Color:";
+			details[j++] = String.format("\tHex: 0x%08X", color);
+			details[j++] = String.format("\tRGBA: (%d, %d, %d, %d)", r, g, b, a);
+			details[j++] = "";
+			details[j++] = "Shadow:";
+			details[j++] = "\t" + shadow;
+			details[j++] = "";
+			details[j++] = "TextRenderer:";
+			details[j++] = "\t" + ClassMappings.getMappedName(textRenderer) + "@" + Integer.toHexString(textRenderer.hashCode());
+			details[j] = "";
+
 			for (int i = 0; i < frames.size(); i++) {
 				StackWalker.StackFrame frame = frames.get(i);
 				String label = buildFrameLabel(frame);
@@ -223,28 +281,8 @@ public class DrawContextMixin {
 
 					data = new DrawTextData(
 							label, simpleLabel,
-							combineDetails(new Object[] {
-									"Captured: drawText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/OrderedText;IIIZ)V",
-									"",
-									"Text:",
-									String.format("\t\"%s\"", content),
-									"",
-									"Position:",
-									String.format("\t(x, y): (%d, %d)", x, y),
-									String.format("\tWidth: %d px", width),
-									"",
-									"Color:",
-									String.format("\tHex: 0x%08X", color),
-									String.format("\tRGBA: (%d, %d, %d, %d)", r, g, b, a),
-									"",
-									"Shadow:",
-									"\t" + shadow,
-									"",
-									"TextRenderer:",
-									"\t" + ClassMappings.getMappedName(textRenderer) + "@" + Integer.toHexString(textRenderer.hashCode()),
-									""
-							}, buildGenericFrameDetails(frame, label)),
-							text, x, y, width
+							combineDetails(details, buildGenericFrameDetails(frame, label)),
+							Math.round(screenPos.x), Math.round(screenPos.y), width
 					);
 				} else {
 					data = new SimpleAlternatingDisplayNodeData(
@@ -261,42 +299,90 @@ public class DrawContextMixin {
 		}
 	}
 
-	// source says u1, v1, u2, v2, but it's actually u1, u2, v1, v2. same deal with drawTiledTexturedQuad
+	// source args seem to be named wrong. they say u1, v1, u2, v2, but it's actually u1, u2, v1, v2. same deal with drawTiledTexturedQuad
 	@Inject(method = "drawTexturedQuad(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lcom/mojang/blaze3d/textures/GpuTextureView;Lnet/minecraft/client/gl/GpuSampler;IIIIFFFFI)V", at = @At("HEAD"))
 	private void injectDrawTexturedQuad(RenderPipeline pipeline, GpuTextureView textureView, GpuSampler sampler, int x1, int y1, int x2, int y2, float u1, float u2, float v1, float v2, int color, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = getFrames();
 
-		GpuTexture texture = textureView.texture();
-
-		BufferedImage buffer = null;
-		if (texture instanceof GlTexture glTexture) {
-			buffer = GUIInspector.getTextureSubregion(glTexture, 0, u1, v1, u2, v2);
-			if (buffer == null) buffer = GUIInspector.getTextureSubregion(glTexture, 0, 0, 0, 1, 1);
-		}
-
-		int texWidth  = texture.getWidth(0);
-		int texHeight = texture.getHeight(0);
-
-		int px1 = (int)(u1 * texWidth);
-		int py1 = (int)(v1 * texHeight);
-		int px2 = (int)(u2 * texWidth);
-		int py2 = (int)(v2 * texHeight);
-
-		int[] argb = decodeColor(color);
-		int a = argb[0], r = argb[1], g = argb[2], b = argb[3];
-		float alphaPercent = (a / 255.0f) * 100f;
-
-		String usageString = decodeUsageFlags(texture.usage());
-
-		DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
-
-		Class<?> skipClass = GUIInspector.class;
-
-		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(skipClass));
+		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(GUIInspector.class));
 
 		if (!shouldSkip) {
+
+			GpuTexture texture = textureView.texture();
+
+			BufferedImage buffer = null;
+			if (texture instanceof GlTexture glTexture) {
+				buffer = GUIInspector.getTextureSubregion(glTexture, 0, u1, v1, u2, v2);
+				if (buffer == null) buffer = GUIInspector.getTextureSubregion(glTexture, 0, 0, 0, 1, 1);
+			}
+
+			int texWidth  = texture.getWidth(0);
+			int texHeight = texture.getHeight(0);
+
+			int px1 = (int)(u1 * texWidth);
+			int py1 = (int)(v1 * texHeight);
+			int px2 = (int)(u2 * texWidth);
+			int py2 = (int)(v2 * texHeight);
+
+			int[] argb = decodeColor(color);
+			int a = argb[0], r = argb[1], g = argb[2], b = argb[3];
+			float alphaPercent = (a / 255.0f) * 100f;
+
+			String usageString = decodeUsageFlags(texture.usage());
+
+			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
+
+			DrawContext context = ((DrawContext) (Object) this);
+
+			Vector2f screenPos1 = new Vector2f(x1, y1);
+			Vector2f screenPos2 = new Vector2f(x2, y2);
+
+			context.getMatrices().transformPosition(screenPos1, screenPos1);
+			context.getMatrices().transformPosition(screenPos2, screenPos2);
+
+			boolean screenDifferent = Math.round(screenPos1.x) != x1 || Math.round(screenPos1.y) != y1 || Math.round(screenPos2.x) != x2 || Math.round(screenPos2.y) != y2;
+
+			Object[] details = new Object[30 + (screenDifferent ? 4 : 0)];
+			int j = 0;
+			details[j++] = "Captured: drawTexturedQuad(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lcom/mojang/blaze3d/textures/GpuTextureView;Lnet/minecraft/client/gl/GpuSampler;IIIIFFFFI)V";
+			details[j++] = "";
+			details[j++] = "Screen Rect:";
+			details[j++] = String.format("\tTop-left: (%d, %d)", x1, y1);
+			details[j++] = String.format("\tBottom-right: (%d, %d)", x2, y2);
+			details[j++] = String.format("\tSize: %d x %d", x2 - x1, y2 - y1);
+			if (screenDifferent) {
+				details[j++] = "";
+				details[j++] = String.format("\tOn-screen top-left: (%d, %d)", Math.round(screenPos1.x), Math.round(screenPos1.y));
+				details[j++] = String.format("\tOn-screen bottom-right: (%d, %d)", Math.round(screenPos2.x), Math.round(screenPos2.y));
+				details[j++] = String.format("\tOn-screen size: %d x %d", Math.round(screenPos2.x - screenPos1.x), Math.round(screenPos2.y - screenPos1.y));
+			}
+			details[j++] = "";
+			details[j++] = "UV Rect:";
+			details[j++] = String.format("\tNormalized: (%.4f, %.4f) -> (%.4f, %.4f)", u1, v1, u2, v2);
+			details[j++] = String.format("\tPixel: (%d, %d) -> (%d, %d)", px1, py1, px2, py2);
+			details[j++] = "";
+			details[j++] = "Color:";
+			details[j++] = String.format("\tHex: 0x%08X", color);
+			details[j++] = String.format("\tRGBA: (%d, %d, %d, %d)", r, g, b, a);
+			details[j++] = String.format("\tAlpha: %.1f%%", alphaPercent);
+			details[j++] = "";
+			details[j++] = "Texture:";
+			details[j++] = String.format("\tLabel: %s", texture.getLabel());
+			details[j++] = String.format("\tSize: %d x %d", texWidth, texHeight);
+			details[j++] = String.format("\tMip Levels: %d", texture.getMipLevels());
+			details[j++] = String.format("\tLayers: %d", texture.getDepthOrLayers());
+			details[j++] = String.format("\tFormat: %s", texture.getFormat());
+			details[j++] = String.format("\tUsage: %s", usageString);
+			details[j++] = "";
+			details[j++] = "Sampler:";
+			details[j++] = "\t" + ClassMappings.getMappedName(sampler) + "@" + Integer.toHexString(sampler.hashCode());
+			details[j++] = "";
+			details[j++] = "Image:";
+			details[j++] = buffer == null ? "[Could not display image]" : buffer;
+			details[j] = "";
+
 			for (int i = 0; i < frames.size(); i++) {
 				StackWalker.StackFrame frame = frames.get(i);
 				String label = buildFrameLabel(frame);
@@ -308,39 +394,8 @@ public class DrawContextMixin {
 
 					data = new DrawTexturedQuadData(
 							label, simpleLabel,
-							combineDetails(new Object[] {
-									"Captured: drawTexturedQuad(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lcom/mojang/blaze3d/textures/GpuTextureView;Lnet/minecraft/client/gl/GpuSampler;IIIIFFFFI)V",
-									"",
-									"Screen Rect:",
-									String.format("\tTop-left: (%d, %d)", x1, y1),
-									String.format("\tBottom-right: (%d, %d)", x2, y2),
-									String.format("\tSize: %d x %d", x2 - x1, y2 - y1),
-									"",
-									"UV Rect:",
-									String.format("\tNormalized: (%.4f, %.4f) -> (%.4f, %.4f)", u1, v1, u2, v2),
-									String.format("\tPixel: (%d, %d) -> (%d, %d)", px1, py1, px2, py2),
-									"",
-									"Color:",
-									String.format("\tHex: 0x%08X", color),
-									String.format("\tRGBA: (%d, %d, %d, %d)", r, g, b, a),
-									String.format("\tAlpha: %.1f%%", alphaPercent),
-									"",
-									"Texture:",
-									String.format("\tLabel: %s", texture.getLabel()),
-									String.format("\tSize: %d x %d", texWidth, texHeight),
-									String.format("\tMip Levels: %d", texture.getMipLevels()),
-									String.format("\tLayers: %d", texture.getDepthOrLayers()),
-									String.format("\tFormat: %s", texture.getFormat()),
-									String.format("\tUsage: %s", usageString),
-									"",
-									"Sampler:",
-									"\t" + ClassMappings.getMappedName(sampler) + "@" + Integer.toHexString(sampler.hashCode()),
-									"",
-									"Image:",
-									buffer == null ? "[Could not display image]" : buffer,
-									""
-							}, buildGenericFrameDetails(frame, label)),
-							x1, y1, x2, y2
+							combineDetails(details, buildGenericFrameDetails(frame, label)),
+							Math.round(screenPos1.x), Math.round(screenPos1.y), Math.round(screenPos2.x), Math.round(screenPos2.y)
 					);
 				} else {
 					data = new SimpleAlternatingDisplayNodeData(
@@ -363,35 +418,83 @@ public class DrawContextMixin {
 
 		List<StackWalker.StackFrame> frames = getFrames();
 
-		GpuTexture texture = textureView.texture();
-
-		BufferedImage buffer = null;
-		if (texture instanceof GlTexture glTexture) {
-			buffer = GUIInspector.getTextureSubregion(glTexture, 0, u0, v0, u1, v1);
-			if (buffer == null) buffer = GUIInspector.getTextureSubregion(glTexture, 0, 0, 0, 1, 1);
-		}
-
-		int texWidth  = texture.getWidth(0);
-		int texHeight = texture.getHeight(0);
-
-		int px0 = (int)(u0 * texWidth);
-		int py0 = (int)(v0 * texHeight);
-		int px1 = (int)(u1 * texWidth);
-		int py1 = (int)(v1 * texHeight);
-
-		int[] argb = decodeColor(color);
-		int a = argb[0], r = argb[1], g = argb[2], b = argb[3];
-		float alphaPercent = (a / 255.0f) * 100f;
-
-		String usageString = decodeUsageFlags(texture.usage());
-
-		DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
-
-		Class<?> skipClass = GUIInspector.class;
-
-		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(skipClass));
+		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(GUIInspector.class));
 
 		if (!shouldSkip) {
+
+			GpuTexture texture = textureView.texture();
+
+			BufferedImage buffer = null;
+			if (texture instanceof GlTexture glTexture) {
+				buffer = GUIInspector.getTextureSubregion(glTexture, 0, u0, v0, u1, v1);
+				if (buffer == null) buffer = GUIInspector.getTextureSubregion(glTexture, 0, 0, 0, 1, 1);
+			}
+
+			int texWidth  = texture.getWidth(0);
+			int texHeight = texture.getHeight(0);
+
+			int px0 = (int)(u0 * texWidth);
+			int py0 = (int)(v0 * texHeight);
+			int px1 = (int)(u1 * texWidth);
+			int py1 = (int)(v1 * texHeight);
+
+			int[] argb = decodeColor(color);
+			int a = argb[0], r = argb[1], g = argb[2], b = argb[3];
+			float alphaPercent = (a / 255.0f) * 100f;
+
+			String usageString = decodeUsageFlags(texture.usage());
+
+			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
+
+			DrawContext context = ((DrawContext) (Object) this);
+
+			Vector2f screenPos0 = new Vector2f(x0, y0);
+			Vector2f screenPos1 = new Vector2f(x1, y1);
+
+			context.getMatrices().transformPosition(screenPos0, screenPos0);
+			context.getMatrices().transformPosition(screenPos1, screenPos1);
+
+			boolean screenDifferent = Math.round(screenPos0.x) != x0 || Math.round(screenPos0.y) != y0 || Math.round(screenPos1.x) != x1 || Math.round(screenPos1.y) != y1;
+
+			Object[] details = new Object[30 + (screenDifferent ? 4 : 0)];
+			int j = 0;
+			details[j++] = "Captured: drawTiledTexturedQuad(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lcom/mojang/blaze3d/textures/GpuTextureView;Lnet/minecraft/client/gl/GpuSampler;IIIIIIFFFFI)V";
+			details[j++] = "";
+			details[j++] = "Screen Rect:";
+			details[j++] = String.format("\tTop-left: (%d, %d)", x0, y0);
+			details[j++] = String.format("\tBottom-right: (%d, %d)", x1, y1);
+			details[j++] = String.format("\tSize: %d x %d", x1 - x0, y1 - y0);
+			if (screenDifferent) {
+				details[j++] = "";
+				details[j++] = String.format("\tOn-screen top-left: (%d, %d)", Math.round(screenPos0.x), Math.round(screenPos0.y));
+				details[j++] = String.format("\tOn-screen bottom-right: (%d, %d)", Math.round(screenPos1.x), Math.round(screenPos1.y));
+				details[j++] = String.format("\tOn-screen size: %d x %d", Math.round(screenPos1.x - screenPos0.x), Math.round(screenPos1.y - screenPos0.y));
+			}
+			details[j++] = "";
+			details[j++] = "UV Rect:";
+			details[j++] = String.format("\tNormalized: (%.4f, %.4f) -> (%.4f, %.4f)", u0, v0, u1, v1);
+			details[j++] = String.format("\tPixel: (%d, %d) -> (%d, %d)", px0, py0, px1, py1);
+			details[j++] = "";
+			details[j++] = "Color:";
+			details[j++] = String.format("\tHex: 0x%08X", color);
+			details[j++] = String.format("\tRGBA: (%d, %d, %d, %d)", r, g, b, a);
+			details[j++] = String.format("\tAlpha: %.1f%%", alphaPercent);
+			details[j++] = "";
+			details[j++] = "Texture:";
+			details[j++] = String.format("\tLabel: %s", texture.getLabel());
+			details[j++] = String.format("\tSize: %d x %d", texWidth, texHeight);
+			details[j++] = String.format("\tMip Levels: %d", texture.getMipLevels());
+			details[j++] = String.format("\tLayers: %d", texture.getDepthOrLayers());
+			details[j++] = String.format("\tFormat: %s", texture.getFormat());
+			details[j++] = String.format("\tUsage: %s", usageString);
+			details[j++] = "";
+			details[j++] = "Sampler:";
+			details[j++] = "\t" + ClassMappings.getMappedName(sampler) + "@" + Integer.toHexString(sampler.hashCode());
+			details[j++] = "";
+			details[j++] = "Image:";
+			details[j++] = buffer == null ? "[Could not display image]" : buffer;
+			details[j] = "";
+
 			for (int i = 0; i < frames.size(); i++) {
 				StackWalker.StackFrame frame = frames.get(i);
 				String label = buildFrameLabel(frame);
@@ -403,38 +506,70 @@ public class DrawContextMixin {
 
 					data = new DrawTiledTexturedQuadData(
 							label, simpleLabel,
-							combineDetails(new Object[] {
-									"",
-									"Screen Rect:",
-									String.format("\tTop-left: (%d, %d)", x0, y0),
-									String.format("\tBottom-right: (%d, %d)", x1, y1),
-									String.format("\tSize: %d x %d", x1 - x0, y1 - y0),
-									"",
-									"UV Rect:",
-									String.format("\tNormalized: (%.4f, %.4f) -> (%.4f, %.4f)", u0, v0, u1, v1),
-									String.format("\tPixel: (%d, %d) -> (%d, %d)", px0, py0, px1, py1),
-									"",
-									"Color:",
-									String.format("\tHex: 0x%08X", color),
-									String.format("\tRGBA: (%d, %d, %d, %d)", r, g, b, a),
-									String.format("\tAlpha: %.1f%%", alphaPercent),
-									"",
-									"Texture:",
-									String.format("\tLabel: %s", texture.getLabel()),
-									String.format("\tSize: %d x %d", texWidth, texHeight),
-									String.format("\tMip Levels: %d", texture.getMipLevels()),
-									String.format("\tLayers: %d", texture.getDepthOrLayers()),
-									String.format("\tFormat: %s", texture.getFormat()),
-									String.format("\tUsage: %s", usageString),
-									"",
-									"Sampler:",
-									"\t" + ClassMappings.getMappedName(sampler) + "@" + Integer.toHexString(sampler.hashCode()),
-									"",
-									"Image:",
-									buffer == null ? "[Could not display image]" : buffer,
-									""
-							}, buildGenericFrameDetails(frame, label)),
-							x0, y0, x1, y1
+							combineDetails(details, buildGenericFrameDetails(frame, label)),
+							Math.round(screenPos0.x), Math.round(screenPos0.y), Math.round(screenPos1.x), Math.round(screenPos1.y)
+					);
+				} else {
+					data = new SimpleAlternatingDisplayNodeData(
+							label, simpleLabel,
+							buildGenericFrameDetails(frame, label)
+					);
+				}
+				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
+
+				nodes[i] = new DrawCallDataTreeBuilder(label, data);
+			}
+
+			GUIInspector.treeBuilder.collectChain(nodes);
+		}
+	}
+
+	@Inject(method = "drawItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/world/World;Lnet/minecraft/item/ItemStack;III)V", at = @At("HEAD"))
+	private void injectDrawItem(LivingEntity entity, World world, ItemStack stack, int x, int y, int seed, CallbackInfo ci) {
+		if (!GUIInspector.drawCapture) return;
+
+		List<StackWalker.StackFrame> frames = getFrames();
+
+		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(GUIInspector.class));
+
+		if (!shouldSkip) {
+
+			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
+
+			Vector2f screenPos = new Vector2f(x, y);
+			((DrawContext) (Object) this).getMatrices().transformPosition(screenPos, screenPos);
+
+			boolean screenDifferent = Math.round(screenPos.x) != x || Math.round(screenPos.y) != y;
+
+			Object[] details = new Object[12 + (screenDifferent ? 1 : 0)];
+			int j = 0;
+			details[j++] = "Captured: drawItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/item/ItemStack;III)V";
+			details[j++] = "";
+			details[j++] = "Item:";
+			details[j++] = String.format("\tRaw Name: %s", stack.getItem().getName());
+			details[j++] = String.format("\tLiteral Name: %s", stack.getItem().getName().getString());
+			details[j++] = "";
+			details[j++] = "Position:";
+			details[j++] = String.format("\t(x, y): (%d, %d)", x, y);
+			if (screenDifferent) details[j++] = String.format("\tOn-screen (x, y): (%d, %d)", Math.round(screenPos.x), Math.round(screenPos.y));
+			details[j++] = "";
+			details[j++] = "Stack:";
+			details[j++] = "\t" + ClassMappings.getMappedName(stack) + "@" + Integer.toHexString(stack.hashCode());
+			details[j] = "";
+
+			for (int i = 0; i < frames.size(); i++) {
+				StackWalker.StackFrame frame = frames.get(i);
+				String label = buildFrameLabel(frame);
+				String simpleLabel = buildSimpleFrameLabel(frame);
+
+				AlternatingDisplayNodeData data;
+
+				if (i == 0) {
+
+					data = new DrawItemData(
+							label, simpleLabel,
+							combineDetails(details, buildGenericFrameDetails(frame, label)),
+							Math.round(screenPos.x), Math.round(screenPos.y)
 					);
 				} else {
 					data = new SimpleAlternatingDisplayNodeData(

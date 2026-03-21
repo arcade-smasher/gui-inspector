@@ -7,7 +7,7 @@ import java.util.function.Supplier;
 
 public interface RowData<T> extends FriendlyDisplay {
 
-	Class<T> getType();
+	Class<T> type();
 
 	Supplier<T> getter();
 

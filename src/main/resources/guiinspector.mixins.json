@@ -10,7 +10,9 @@
     "Dim2iAccessor",
     "DrawContextMixin",
     "FlatButtonWidgetAccessor",
-    "MinecraftClientMixin"
+    "GameRendererMixin",
+    "MinecraftClientMixin",
+    "SlotAccessor"
   ],
   "injectors": {
     "defaultRequire": 1
