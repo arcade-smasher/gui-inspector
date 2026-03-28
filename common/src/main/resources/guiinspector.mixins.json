@@ -1,0 +1,28 @@
+{
+  "required": true,
+  "package": "com.arcadesmasher.guiinspector.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "client": [
+    "ClickableWidgetAccessor",
+    "DrawContextMixin",
+    "GameRendererMixin",
+    "MinecraftClientMixin",
+    "MouseMixin",
+    "SlotAccessor",
+    "newsodium.AbstractWidgetAccessor",
+    "newsodium.AbstractWidgetMixin",
+    "newsodium.CenteredFlatWidgetAccessor",
+    "newsodium.Dim2iAccessor",
+    "newsodium.FlatButtonWidgetAccessor",
+    "oldsodium.AbstractWidgetAccessor",
+    "oldsodium.Dim2iAccessor",
+    "oldsodium.FlatButtonWidgetAccessor",
+    "oldsodium.FlatButtonWidgetMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  },
+  "overwrites": {
+    "requireAnnotations": true
+  }
+}
