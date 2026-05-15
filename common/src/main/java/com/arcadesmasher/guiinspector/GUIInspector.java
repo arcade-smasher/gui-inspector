@@ -6,9 +6,13 @@ import com.arcadesmasher.guiinspector.input.*;
 import com.arcadesmasher.guiinspector.data.nodedata.AlternatingDisplayNodeData;
 import com.arcadesmasher.guiinspector.data.FriendlyDisplay;
 import com.arcadesmasher.guiinspector.data.nodedata.NodeData;
-import com.arcadesmasher.guiinspector.mappings.ClassMappings;
+import com.arcadesmasher.guiinspector.mappings.MappingsResolver;
 import com.arcadesmasher.guiinspector.mixin.ClickableWidgetAccessor;
 import com.arcadesmasher.guiinspector.mixin.SlotAccessor;
+import com.arcadesmasher.guiinspector.sodiumcompat.SodiumCompat;
+import com.arcadesmasher.guiinspector.sodiumcompat.SodiumCompatNew;
+import com.arcadesmasher.guiinspector.sodiumcompat.SodiumCompatOld;
+import com.arcadesmasher.guiinspector.tree.TreeBuilder;
 import com.arcadesmasher.guiinspector.tree.TreePanel;
 import com.arcadesmasher.guiinspector.tree.TreeWindow;
 import net.fabricmc.api.ClientModInitializer;
@@ -39,6 +43,7 @@ import javax.swing.*;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.tree.DefaultMutableTreeNode;
 import java.awt.*;
+import java.awt.event.ActionListener;
 import java.util.*;
 import java.util.List;
 import java.util.function.BiFunction;
@@ -75,8 +80,18 @@ public class GUIInspector implements ClientModInitializer {
 	public static Consumer<Object> removeHook;
 	public static Consumer<Object> toggleVisibilityHook;
 
+	public static MappingsResolver mappingsResolver = new MappingsResolver();
+	public static boolean usingYarnMappings = true;
+	private final Object mappingLock = new Object();
+
 	@Override
 	public void onInitializeClient() {
+
+		try {
+			mappingsResolver.loadYarn();
+		} catch (MappingsResolver.MappingsException e) {
+			throw new RuntimeException(e);
+		}
 
 		sodiumLoaded = FabricLoader.getInstance().isModLoaded("sodium");
 		if (sodiumLoaded) {
@@ -115,7 +130,7 @@ public class GUIInspector implements ClientModInitializer {
 			DefaultMutableTreeNode selectedNode = widgets.getSelectedNode();
 			if (selectedNode == null) return;
 			Object object = selectedNode.getUserObject();
-			widgets.addSideMenuEntry("Class name: " + ClassMappings.getMappedName(object));
+			widgets.addSideMenuEntry("Class name: " + getMappedClassName(object));
 			widgets.addSideMenuEntry("Unmapped class name: " + object.getClass());
 			if (object instanceof ParentElement parentElement) {
 				widgets.addSideMenuEntry("Children: " + parentElement.children().size());
@@ -230,9 +245,9 @@ public class GUIInspector implements ClientModInitializer {
 					});
 				} else {
 					JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
-							"Unhandled type: " + ClassMappings.getMappedName(rd.type()) + ". Please report this to the developer along with the error message.", "Unhandled Type",
+							"Unhandled type: " + getMappedClassName(rd.type()) + ". Please report this to the developer along with the error message.", "Unhandled Type",
 							JOptionPane.WARNING_MESSAGE);
-					LOGGER.error("Unhandled type: {}. Please report this to the developer along with the error message.", ClassMappings.getMappedName(rd.type()));
+					LOGGER.error("Unhandled type: {}. Please report this to the developer along with the error message.", getMappedClassName(rd.type()));
 				}
 			} else {
 				JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
@@ -337,6 +352,73 @@ public class GUIInspector implements ClientModInitializer {
 			drawCalls.hideSideMenu();
 			drawCalls.clear();
 		});
+		var ref = new Object() {
+			JButton switchBtnWidgets = null;
+			JButton switchBtnDrawCalls = null;
+		};
+
+		ActionListener switchBtnActionListener = e -> {
+			if (usingYarnMappings) {
+				if (mappingsResolver.isMojMapLoaded()) {
+					usingYarnMappings = false;
+					updateMappingButtons(ref.switchBtnWidgets, ref.switchBtnDrawCalls);
+					treeWindow.getSelectedTab().getTreeModel().reload();
+					return;
+				}
+
+				JDialog loadingDialog = new JDialog(treeWindow.getFrame(), "Loading mappings", Dialog.ModalityType.APPLICATION_MODAL);
+				loadingDialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+
+				JLabel label = new JLabel("Loading mappings, please wait...");
+				label.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+				loadingDialog.getContentPane().add(label);
+				loadingDialog.pack();
+				loadingDialog.setLocationRelativeTo(treeWindow.getFrame());
+
+				SwingWorker<Void, Void> worker = new SwingWorker<>() {
+					@Override
+					protected Void doInBackground() {
+						synchronized (mappingLock) {
+							try {
+								mappingsResolver.loadMojMap();
+								usingYarnMappings = false;
+							} catch (MappingsResolver.MappingsException ex) {
+								throw new RuntimeException(ex);
+							}
+						}
+						return null;
+					}
+
+					@Override
+					protected void done() {
+						loadingDialog.dispose();
+						updateMappingButtons(ref.switchBtnWidgets, ref.switchBtnDrawCalls);
+
+						try {
+							get();
+						} catch (Exception ex) {
+							JOptionPane.showMessageDialog(treeWindow.getFrame(),
+									"Failed to load MojMap: " + ex.getMessage(),
+									"Error",
+									JOptionPane.ERROR_MESSAGE);
+						}
+						treeWindow.getSelectedTab().getTreeModel().reload();
+					}
+				};
+
+				worker.execute();
+				loadingDialog.setVisible(true);
+			} else {
+				usingYarnMappings = true;
+				updateMappingButtons(ref.switchBtnWidgets, ref.switchBtnDrawCalls);
+				treeWindow.getSelectedTab().getTreeModel().reload();
+			}
+		};
+		ref.switchBtnWidgets = createMappingToggleButton(switchBtnActionListener);
+		ref.switchBtnDrawCalls = createMappingToggleButton(switchBtnActionListener);
+		widgets.getToolbar().add(ref.switchBtnWidgets);
+		drawCalls.getToolbar().add(ref.switchBtnDrawCalls);
 
 		treeWindow.show();
 
@@ -349,6 +431,42 @@ public class GUIInspector implements ClientModInitializer {
 //		});
 
 		ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> afterInit(client, screen));
+	}
+
+	private JButton createMappingToggleButton(ActionListener actionListener) {
+		JButton btn = new JButton("Switch to MojMap");
+
+		btn.addActionListener(actionListener);
+
+		return btn;
+	}
+
+	private void updateMappingButtons(JButton b1, JButton b2) {
+		b1.setText(usingYarnMappings
+				? "Switch to MojMap"
+				: "Switch to Yarn");
+		b2.setText(usingYarnMappings
+				? "Switch to MojMap"
+				: "Switch to Yarn");
+	}
+
+	public static String getMappedClassName(Object object) {
+		return getMappedClassName(object.getClass());
+	}
+
+	public static String getMappedClassName(Class<?> clazz) {
+		String name = clazz.getName();
+		String mappedName = usingYarnMappings ?
+				mappingsResolver.getYarnClassName(name) :
+				mappingsResolver.getMojMapClassName(name);
+		return mappedName == null ? name : mappedName;
+	}
+
+	public static String getMappedMethodName(Class<?> clazz, String methodName) {
+		String mappedName = usingYarnMappings ?
+				mappingsResolver.getYarnMethodName(clazz, methodName) :
+				mappingsResolver.getMojMapMethodName(clazz, methodName);
+		return mappedName == null ? methodName : mappedName;
 	}
 
 	private <T> Consumer<T> warnBreakingSetter(Consumer<T> setter) {
@@ -512,7 +630,7 @@ public class GUIInspector implements ClientModInitializer {
 	private static void logWidgets(List<?> objects, int depth) {
 
 		for (Object object : objects) {
-			System.out.println("  ".repeat(depth) + ClassMappings.getMappedName(object));
+			System.out.println("  ".repeat(depth) + getMappedClassName(object));
 			if (object instanceof Widget widget) {
 				System.out.println("  ".repeat(depth) + "x:      " + widget.getX());
 				System.out.println("  ".repeat(depth) + "y:      " + widget.getY());
@@ -582,7 +700,7 @@ public class GUIInspector implements ClientModInitializer {
 				}
 				widgets.setSelectedNode(selectedWidget, s -> {
 					if (!s) {
-						System.out.println(ClassMappings.getMappedName(mouse.client.currentScreen));
+						System.out.println(getMappedClassName(mouse.client.currentScreen));
 //								logWidgets(scr.children());
 					}
 				});

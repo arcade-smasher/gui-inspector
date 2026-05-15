@@ -1,7 +1,7 @@
 package com.arcadesmasher.guiinspector.mixin;
 
 import com.arcadesmasher.guiinspector.GUIInspector;
-import com.arcadesmasher.guiinspector.TreeBuilder;
+import com.arcadesmasher.guiinspector.tree.TreeBuilder;
 import net.minecraft.client.MinecraftClient;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;

@@ -1,5 +1,7 @@
-package com.arcadesmasher.guiinspector;
+package com.arcadesmasher.guiinspector.sodiumcompat;
 
+import com.arcadesmasher.guiinspector.AbstractWidgetAccessor;
+import com.arcadesmasher.guiinspector.Dim2iAccessor;
 import com.arcadesmasher.guiinspector.data.rowdata.DefaultRowData;
 import com.arcadesmasher.guiinspector.mixin.oldsodium.FlatButtonWidgetAccessor;
 import com.arcadesmasher.guiinspector.tree.TreePanel;

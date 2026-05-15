@@ -1,7 +1,7 @@
 package com.arcadesmasher.guiinspector.tree;
 
 import com.arcadesmasher.guiinspector.data.FriendlyDisplay;
-import com.arcadesmasher.guiinspector.mappings.ClassMappings;
+import com.arcadesmasher.guiinspector.GUIInspector;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
@@ -43,7 +43,7 @@ public class TreePanel extends JPanel {
 					if (node.getUserObject() instanceof FriendlyDisplay friendlyDisplay) {
 						value = friendlyDisplay.display();
 					} else {
-						value = ClassMappings.getMappedName(node.getUserObject());
+						value = GUIInspector.getMappedClassName(node.getUserObject());
 					}
 				}
 				return super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);

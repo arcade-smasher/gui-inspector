@@ -1,5 +1,6 @@
-package com.arcadesmasher.guiinspector;
+package com.arcadesmasher.guiinspector.sodiumcompat;
 
+import com.arcadesmasher.guiinspector.AbstractWidgetAccessor;
 import com.arcadesmasher.guiinspector.data.rowdata.DefaultRowData;
 import com.arcadesmasher.guiinspector.mixin.newsodium.CenteredFlatWidgetAccessor;
 import com.arcadesmasher.guiinspector.mixin.newsodium.FlatButtonWidgetAccessor;

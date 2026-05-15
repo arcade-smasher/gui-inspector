@@ -2,8 +2,6 @@ package com.arcadesmasher.guiinspector.mixin;
 
 import com.arcadesmasher.guiinspector.*;
 import com.arcadesmasher.guiinspector.data.nodedata.*;
-import com.arcadesmasher.guiinspector.mappings.ClassMappings;
-import com.arcadesmasher.guiinspector.mappings.MethodMappings;
 import com.mojang.blaze3d.opengl.GlStateManager;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.textures.GpuTexture;
@@ -48,8 +46,8 @@ public class DrawContextMixin {
 	private static Object[] buildGenericFrameDetails(StackWalker.StackFrame frame, String label) {
 		return new Object[]{
 				"Full method: " +	(label != null ? label : buildFrameLabel(frame)),
-				"Class: " +			ClassMappings.getMappedName(frame.getDeclaringClass()),
-				"Method: " +		MethodMappings.getMappedName(frame.getDeclaringClass(), frame.getMethodName()),
+				"Class: " +			GUIInspector.getMappedClassName(frame.getDeclaringClass()),
+				"Method: " +		GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()),
 				"File: " +			frame.getFileName(),
 				"Line: " +			frame.getLineNumber(),
 				"Native: " +		frame.isNativeMethod(),
@@ -70,19 +68,19 @@ public class DrawContextMixin {
 	private static String buildFrameLabel(StackWalker.StackFrame frame) {
 		StringBuilder sb = new StringBuilder();
 
-		sb.append(ClassMappings.getMappedName(frame.getDeclaringClass()))
+		sb.append(GUIInspector.getMappedClassName(frame.getDeclaringClass()))
 				.append('@')
 				.append(Integer.toHexString(frame.getDeclaringClass().hashCode()))
 				.append("    ")
-				.append(ClassMappings.getMappedName(frame.getMethodType().returnType()))
+				.append(GUIInspector.getMappedClassName(frame.getMethodType().returnType()))
 				.append(' ')
-				.append(MethodMappings.getMappedName(frame.getDeclaringClass(), frame.getMethodName()))
+				.append(GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()))
 				.append('(');
 
 		boolean first = true;
 		for (var param : frame.getMethodType().parameterList()) {
 			if (!first) sb.append(", ");
-			sb.append(ClassMappings.getMappedName(param));
+			sb.append(GUIInspector.getMappedClassName(param));
 			first = false;
 		}
 
@@ -93,7 +91,7 @@ public class DrawContextMixin {
 
 	@Unique
 	private String buildSimpleFrameLabel(StackWalker.StackFrame frame) {
-		return MethodMappings.getMappedName(frame.getDeclaringClass(), frame.getMethodName()) + "(...)";
+		return GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()) + "(...)";
 	}
 
 	// returns [a, r, g, b]
@@ -176,10 +174,10 @@ public class DrawContextMixin {
 			details[j++] = gradientInfo;
 			details[j++] = "";
 			details[j++] = "RenderPipeline:";
-			details[j++] = "\t" + ClassMappings.getMappedName(pipeline) + "@" + Integer.toHexString(pipeline.hashCode());
+			details[j++] = "\t" + GUIInspector.getMappedClassName(pipeline) + "@" + Integer.toHexString(pipeline.hashCode());
 			details[j++] = "";
 			details[j++] = "TextureSetup:";
-			details[j++] = "\t" + ClassMappings.getMappedName(textureSetup) + "@" + Integer.toHexString(textureSetup.hashCode());
+			details[j++] = "\t" + GUIInspector.getMappedClassName(textureSetup) + "@" + Integer.toHexString(textureSetup.hashCode());
 			details[j] = "";
 
 			for (int i = 0; i < frames.size(); i++) {
@@ -262,7 +260,7 @@ public class DrawContextMixin {
 			details[j++] = "\t" + shadow;
 			details[j++] = "";
 			details[j++] = "TextRenderer:";
-			details[j++] = "\t" + ClassMappings.getMappedName(textRenderer) + "@" + Integer.toHexString(textRenderer.hashCode());
+			details[j++] = "\t" + GUIInspector.getMappedClassName(textRenderer) + "@" + Integer.toHexString(textRenderer.hashCode());
 			details[j] = "";
 
 			for (int i = 0; i < frames.size(); i++) {
@@ -372,7 +370,7 @@ public class DrawContextMixin {
 			details[j++] = String.format("\tUsage: %s", usageString);
 			details[j++] = "";
 			details[j++] = "Sampler:";
-			details[j++] = "\t" + ClassMappings.getMappedName(sampler) + "@" + Integer.toHexString(sampler.hashCode());
+			details[j++] = "\t" + GUIInspector.getMappedClassName(sampler) + "@" + Integer.toHexString(sampler.hashCode());
 			details[j++] = "";
 			details[j++] = "Image:";
 			details[j++] = buffer == null ? "[Could not display image]" : buffer;
@@ -484,7 +482,7 @@ public class DrawContextMixin {
 			details[j++] = String.format("\tUsage: %s", usageString);
 			details[j++] = "";
 			details[j++] = "Sampler:";
-			details[j++] = "\t" + ClassMappings.getMappedName(sampler) + "@" + Integer.toHexString(sampler.hashCode());
+			details[j++] = "\t" + GUIInspector.getMappedClassName(sampler) + "@" + Integer.toHexString(sampler.hashCode());
 			details[j++] = "";
 			details[j++] = "Image:";
 			details[j++] = buffer == null ? "[Could not display image]" : buffer;
@@ -549,7 +547,7 @@ public class DrawContextMixin {
 			if (screenDifferent) details[j++] = String.format("\tOn-screen (x, y): (%d, %d)", Math.round(screenPos.x), Math.round(screenPos.y));
 			details[j++] = "";
 			details[j++] = "Stack:";
-			details[j++] = "\t" + ClassMappings.getMappedName(stack) + "@" + Integer.toHexString(stack.hashCode());
+			details[j++] = "\t" + GUIInspector.getMappedClassName(stack) + "@" + Integer.toHexString(stack.hashCode());
 			details[j] = "";
 
 			for (int i = 0; i < frames.size(); i++) {

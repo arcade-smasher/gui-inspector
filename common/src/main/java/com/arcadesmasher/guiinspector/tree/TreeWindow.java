@@ -18,7 +18,7 @@ public class TreeWindow {
 
 		frame = new JFrame("GUI Inspector");
 		frame.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
-		frame.setSize(400, 500);
+		frame.setSize(500, 500);
 		frame.setLocationRelativeTo(null);
 		frame.add(tabbedPane);
 	}
@@ -62,8 +62,7 @@ public class TreeWindow {
 	public TreePanel getSelectedTab() {
 		int idx = tabbedPane.getSelectedIndex();
 		if (idx < 0) return null;
-		String name = tabbedPane.getTitleAt(idx);
-		return tabs.get(name);
+		return tabs.values().stream().skip(idx).findFirst().orElse(null);
 	}
 
 	public void show() {

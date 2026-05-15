@@ -1,4 +1,4 @@
-package com.arcadesmasher.guiinspector;
+package com.arcadesmasher.guiinspector.sodiumcompat;
 
 import com.arcadesmasher.guiinspector.tree.TreePanel;
 

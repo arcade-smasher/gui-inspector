@@ -1,7 +1,6 @@
-package com.arcadesmasher.guiinspector;
+package com.arcadesmasher.guiinspector.tree;
 
 import com.arcadesmasher.guiinspector.data.nodedata.DrawCallDataTreeBuilder;
-import com.arcadesmasher.guiinspector.tree.TreePanel;
 
 import javax.swing.tree.DefaultMutableTreeNode;
 import java.util.*;
