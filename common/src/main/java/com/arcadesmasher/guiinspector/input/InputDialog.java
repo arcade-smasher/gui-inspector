@@ -45,9 +45,7 @@ public abstract class InputDialog<T> extends JDialog {
 
 	protected void validateComboBox(JComboBox<?> comboBox) {
 		if (!comboBox.isEditable()) {
-			comboBox.addActionListener(e -> {
-				submitButton.setEnabled(comboBox.getSelectedItem() != null);
-			});
+			comboBox.addActionListener(e -> submitButton.setEnabled(comboBox.getSelectedItem() != null));
 			return;
 		}
 
