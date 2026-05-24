@@ -208,51 +208,75 @@ public class DrawContextMixin {
 			boolean screenDifferent = Math.round(screenPos1.x) != x1 || Math.round(screenPos1.y) != y1 || Math.round(screenPos2.x) != x2 || Math.round(screenPos2.y) != y2;
 
 			// someone is going to hate me for this
-			Object[] details = new Object[13 + (screenDifferent ? 4 : 0)];
-			int j = 0;
-			details[j++] = "Captured: fill(Lnet/minecraft/client/render/RenderLayer;IIIIII)V";
-			details[j++] = "";
-			details[j++] = "Screen Rect:";
-			details[j++] = String.format("\tTop-left: (%d, %d)", x1, y1);
-			details[j++] = String.format("\tBottom-right: (%d, %d)", x2, y2);
-			details[j++] = String.format("\tSize: %d x %d", x2 - x1, y2 - y1);
-			details[j++] = String.format("\tDepth (z): %d", z);
-			if (screenDifferent) {
+			Supplier<Object[]> computeDetails = () -> {
+				Object[] details = new Object[13 + (screenDifferent ? 4 : 0)];
+				int j = 0;
+				details[j++] = "Captured: " + Descriptors.getDescriptorFromFrame(frames.get(0));
 				details[j++] = "";
-				details[j++] = String.format("\tOn-screen top-left: (%d, %d)", Math.round(screenPos1.x), Math.round(screenPos1.y));
-				details[j++] = String.format("\tOn-screen bottom-right: (%d, %d)", Math.round(screenPos2.x), Math.round(screenPos2.y));
-				details[j++] = String.format("\tOn-screen size: %d x %d", Math.round(screenPos2.x - screenPos1.x), Math.round(screenPos2.y - screenPos1.y));
-			}
-			details[j++] = "";
-			details[j++] = String.format("Solid Color:\n\t0x%08X RGBA(%d,%d,%d,%d)", color, r1, g1, b1, a1);
-			details[j++] = "";
-			details[j++] = "RenderLayer:";
-			details[j++] = "\t" + GUIInspector.getMappedClassName(layer) + "@" + Integer.toHexString(layer.hashCode());
-			details[j] = "";
+				details[j++] = "Screen Rect:";
+				details[j++] = String.format("\tTop-left: (%d, %d)", x1, y1);
+				details[j++] = String.format("\tBottom-right: (%d, %d)", x2, y2);
+				details[j++] = String.format("\tSize: %d x %d", x2 - x1, y2 - y1);
+				details[j++] = String.format("\tDepth (z): %d", z);
+				if (screenDifferent) {
+					details[j++] = "";
+					details[j++] = String.format("\tOn-screen top-left: (%d, %d)", Math.round(screenPos1.x), Math.round(screenPos1.y));
+					details[j++] = String.format("\tOn-screen bottom-right: (%d, %d)", Math.round(screenPos2.x), Math.round(screenPos2.y));
+					details[j++] = String.format("\tOn-screen size: %d x %d", Math.round(screenPos2.x - screenPos1.x), Math.round(screenPos2.y - screenPos1.y));
+				}
+				details[j++] = "";
+				details[j++] = String.format("Solid Color:\n\t0x%08X RGBA(%d,%d,%d,%d)", color, r1, g1, b1, a1);
+				details[j++] = "";
+				details[j++] = GUIInspector.getMappedClassName(RenderLayer.class) + ":";
+				details[j++] = "\t" + GUIInspector.getMappedClassName(layer) + "@" + Integer.toHexString(layer.hashCode());
+				details[j] = "";
+				return details;
+			};
 
 			for (int i = 0; i < frames.size(); i++) {
 				StackWalker.StackFrame frame = frames.get(i);
-				String label = buildFrameLabel(frame);
-				String simpleLabel = buildSimpleFrameLabel(frame);
+
+				boolean usingYarnMappings = GUIInspector.usingYarnMappings;
+				GUIInspector.usingYarnMappings = true;
+				String yarnLabel = buildFrameLabel(frame);
+				String yarnSimpleLabel = buildSimpleFrameLabel(frame);
+				GUIInspector.usingYarnMappings = false;
+				String mojmapLabel = buildFrameLabel(frame);
+				String mojmapSimpleLabel = buildSimpleFrameLabel(frame);
 
 				AlternatingDisplayNodeData data;
 
 				if (i == 0) {
 
+					GUIInspector.usingYarnMappings = true;
+					Object[] yarnDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, yarnLabel));
+					GUIInspector.usingYarnMappings = false;
+					Object[] mojmapDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, mojmapLabel));
+					GUIInspector.usingYarnMappings = usingYarnMappings;
+
 					data = new FillData(
-							label, simpleLabel,
-							combineDetails(details, buildGenericFrameDetails(frame, label)),
+							yarnLabel, yarnSimpleLabel,
+							mojmapLabel, mojmapSimpleLabel,
+							yarnDetails, mojmapDetails,
 							Math.round(screenPos1.x), Math.round(screenPos1.y), Math.round(screenPos2.x), Math.round(screenPos2.y)
 					);
 				} else {
+
+					GUIInspector.usingYarnMappings = true;
+					Object[] yarnDetails = buildGenericFrameDetails(frame, yarnLabel);
+					GUIInspector.usingYarnMappings = false;
+					Object[] mojmapDetails = buildGenericFrameDetails(frame, mojmapLabel);
+					GUIInspector.usingYarnMappings = usingYarnMappings;
+
 					data = new SimpleAlternatingDisplayNodeData(
-							label, simpleLabel,
-							buildGenericFrameDetails(frame, label)
+							yarnLabel, yarnSimpleLabel,
+							mojmapLabel, mojmapSimpleLabel,
+							yarnDetails, mojmapDetails
 					);
 				}
 				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
 
-				nodes[i] = new DrawCallDataTreeBuilder(label, data);
+				nodes[i] = new DrawCallDataTreeBuilder(mojmapLabel, data);
 			}
 
 			GUIInspector.treeBuilder.collectChain(nodes);
@@ -300,62 +324,86 @@ public class DrawContextMixin {
 
 			boolean screenDifferent = Math.round(screenPos.x) != x || Math.round(screenPos.y) != y;
 
-			Object[] details = new Object[19 + (screenDifferent ? 2 : 0)];
-			int j = 0;
-			details[j++] = "Captured: drawText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/OrderedText;IIIZ)I";
-			details[j++] = "";
-			details[j++] = "Text:";
-			details[j++] = String.format("\t\"%s\"", content);
-			details[j++] = "";
-			details[j++] = "Position:";
-			details[j++] = String.format("\t(x, y): (%d, %d)", x, y);
-			details[j++] = String.format("\tWidth: %d px", width);
-			if (screenDifferent) {
+			Supplier<Object[]> computeDetails = () -> {
+				Object[] details = new Object[19 + (screenDifferent ? 2 : 0)];
+				int j = 0;
+				details[j++] = "Captured: " + Descriptors.getDescriptorFromFrame(frames.get(0));
 				details[j++] = "";
-				details[j++] = String.format("\tOn-screen (x, y): (%d, %d)", Math.round(screenPos.x), Math.round(screenPos.y));
-			}
-			details[j++] = "";
-			details[j++] = "Color:";
-			details[j++] = String.format("\tHex: 0x%08X", color);
-			details[j++] = String.format("\tRGBA: (%d, %d, %d, %d)", r, g, b, a);
-			details[j++] = "";
-			details[j++] = "Shadow:";
-			details[j++] = "\t" + shadow;
-			details[j++] = "";
-			details[j++] = "TextRenderer:";
-			details[j++] = "\t" + GUIInspector.getMappedClassName(textRenderer) + "@" + Integer.toHexString(textRenderer.hashCode());
-			details[j] = "";
+				details[j++] = "Text:";
+				details[j++] = String.format("\t\"%s\"", content);
+				details[j++] = "";
+				details[j++] = "Position:";
+				details[j++] = String.format("\t(x, y): (%d, %d)", x, y);
+				details[j++] = String.format("\tWidth: %d px", width);
+				if (screenDifferent) {
+					details[j++] = "";
+					details[j++] = String.format("\tOn-screen (x, y): (%d, %d)", Math.round(screenPos.x), Math.round(screenPos.y));
+				}
+				details[j++] = "";
+				details[j++] = "Color:";
+				details[j++] = String.format("\tHex: 0x%08X", color);
+				details[j++] = String.format("\tRGBA: (%d, %d, %d, %d)", r, g, b, a);
+				details[j++] = "";
+				details[j++] = "Shadow:";
+				details[j++] = "\t" + shadow;
+				details[j++] = "";
+				details[j++] = GUIInspector.getMappedClassName(TextRenderer.class) + ":";
+				details[j++] = "\t" + GUIInspector.getMappedClassName(textRenderer) + "@" + Integer.toHexString(textRenderer.hashCode());
+				details[j] = "";
+				return details;
+			};
 
 			for (int i = 0; i < frames.size(); i++) {
 				StackWalker.StackFrame frame = frames.get(i);
-				String label = buildFrameLabel(frame);
-				String simpleLabel = buildSimpleFrameLabel(frame);
+
+				boolean usingYarnMappings = GUIInspector.usingYarnMappings;
+				GUIInspector.usingYarnMappings = true;
+				String yarnLabel = buildFrameLabel(frame);
+				String yarnSimpleLabel = buildSimpleFrameLabel(frame);
+				GUIInspector.usingYarnMappings = false;
+				String mojmapLabel = buildFrameLabel(frame);
+				String mojmapSimpleLabel = buildSimpleFrameLabel(frame);
 
 				AlternatingDisplayNodeData data;
 
 				if (i == 0) {
 
+					GUIInspector.usingYarnMappings = true;
+					Object[] yarnDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, yarnLabel));
+					GUIInspector.usingYarnMappings = false;
+					Object[] mojmapDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, mojmapLabel));
+					GUIInspector.usingYarnMappings = usingYarnMappings;
+
 					data = new DrawTextData(
-							label, simpleLabel,
-							combineDetails(details, buildGenericFrameDetails(frame, label)),
+							yarnLabel, yarnSimpleLabel,
+							mojmapLabel, mojmapSimpleLabel,
+							yarnDetails, mojmapDetails,
 							Math.round(screenPos.x), Math.round(screenPos.y), width
 					);
 				} else {
+
+					GUIInspector.usingYarnMappings = true;
+					Object[] yarnDetails = buildGenericFrameDetails(frame, yarnLabel);
+					GUIInspector.usingYarnMappings = false;
+					Object[] mojmapDetails = buildGenericFrameDetails(frame, mojmapLabel);
+					GUIInspector.usingYarnMappings = usingYarnMappings;
+
 					data = new SimpleAlternatingDisplayNodeData(
-							label, simpleLabel,
-							buildGenericFrameDetails(frame, label)
+							yarnLabel, yarnSimpleLabel,
+							mojmapLabel, mojmapSimpleLabel,
+							yarnDetails, mojmapDetails
 					);
 				}
 				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
 
-				nodes[i] = new DrawCallDataTreeBuilder(label, data);
+				nodes[i] = new DrawCallDataTreeBuilder(mojmapLabel, data);
 			}
 
 			GUIInspector.treeBuilder.collectChain(nodes);
 		}
 	}
 
-	// source args seem to be named wrong. they say u1, v1, u2, v2, but it's actually u1, u2, v1, v2. same deal with drawTiledTexturedQuad
+	// source args seem to be named wrong. they say u1, v1, u2, v2, but it's actually u1, u2, v1, v2
 	@Inject(method = "drawTexturedQuad(Lnet/minecraft/util/Identifier;IIIIIFFFF)V", at = @At("HEAD"))
 	private void injectDrawTexturedQuad1(Identifier texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
@@ -400,53 +448,77 @@ public class DrawContextMixin {
 
 			boolean screenDifferent = Math.round(screenPos1.x) != x1 || Math.round(screenPos1.y) != y1 || Math.round(screenPos2.x) != x2 || Math.round(screenPos2.y) != y2;
 
-			Object[] details = new Object[15 + (screenDifferent ? 4 : 0)];
-			int j = 0;
-			details[j++] = "Captured: drawTexturedQuad(Lnet/minecraft/util/Identifier;IIIIIFFFF)V";
-			details[j++] = "";
-			details[j++] = "Screen Rect:";
-			details[j++] = String.format("\tTop-left: (%d, %d)", x1, y1);
-			details[j++] = String.format("\tBottom-right: (%d, %d)", x2, y2);
-			details[j++] = String.format("\tSize: %d x %d", x2 - x1, y2 - y1);
-			if (screenDifferent) {
+			Supplier<Object[]> computeDetails = () -> {
+				Object[] details = new Object[15 + (screenDifferent ? 4 : 0)];
+				int j = 0;
+				details[j++] = "Captured: " + Descriptors.getDescriptorFromFrame(frames.get(0));
 				details[j++] = "";
-				details[j++] = String.format("\tOn-screen top-left: (%d, %d)", Math.round(screenPos1.x), Math.round(screenPos1.y));
-				details[j++] = String.format("\tOn-screen bottom-right: (%d, %d)", Math.round(screenPos2.x), Math.round(screenPos2.y));
-				details[j++] = String.format("\tOn-screen size: %d x %d", Math.round(screenPos2.x - screenPos1.x), Math.round(screenPos2.y - screenPos1.y));
-			}
-			details[j++] = "";
-			details[j++] = "UV Rect:";
-			details[j++] = String.format("\tNormalized: (%.4f, %.4f) -> (%.4f, %.4f)", u1, v1, u2, v2);
-			details[j++] = String.format("\tPixel: (%d, %d) -> (%d, %d)", px1, py1, px2, py2);
-			details[j++] = "";
-			details[j++] = "Image:";
-			details[j++] = String.format("\tSize: %d x %d", texWidth, texHeight);
-			details[j++] = subregion == null ? "[Could not display image]" : subregion;
-			details[j] = "";
+				details[j++] = "Screen Rect:";
+				details[j++] = String.format("\tTop-left: (%d, %d)", x1, y1);
+				details[j++] = String.format("\tBottom-right: (%d, %d)", x2, y2);
+				details[j++] = String.format("\tSize: %d x %d", x2 - x1, y2 - y1);
+				if (screenDifferent) {
+					details[j++] = "";
+					details[j++] = String.format("\tOn-screen top-left: (%d, %d)", Math.round(screenPos1.x), Math.round(screenPos1.y));
+					details[j++] = String.format("\tOn-screen bottom-right: (%d, %d)", Math.round(screenPos2.x), Math.round(screenPos2.y));
+					details[j++] = String.format("\tOn-screen size: %d x %d", Math.round(screenPos2.x - screenPos1.x), Math.round(screenPos2.y - screenPos1.y));
+				}
+				details[j++] = "";
+				details[j++] = "UV Rect:";
+				details[j++] = String.format("\tNormalized: (%.4f, %.4f) -> (%.4f, %.4f)", u1, v1, u2, v2);
+				details[j++] = String.format("\tPixel: (%d, %d) -> (%d, %d)", px1, py1, px2, py2);
+				details[j++] = "";
+				details[j++] = "Image:";
+				details[j++] = String.format("\tSize: %d x %d", texWidth, texHeight);
+				details[j++] = subregion == null ? "[Could not display image]" : subregion;
+				details[j] = "";
+				return details;
+			};
 
 			for (int i = 0; i < frames.size(); i++) {
 				StackWalker.StackFrame frame = frames.get(i);
-				String label = buildFrameLabel(frame);
-				String simpleLabel = buildSimpleFrameLabel(frame);
+
+				boolean usingYarnMappings = GUIInspector.usingYarnMappings;
+				GUIInspector.usingYarnMappings = true;
+				String yarnLabel = buildFrameLabel(frame);
+				String yarnSimpleLabel = buildSimpleFrameLabel(frame);
+				GUIInspector.usingYarnMappings = false;
+				String mojmapLabel = buildFrameLabel(frame);
+				String mojmapSimpleLabel = buildSimpleFrameLabel(frame);
 
 				AlternatingDisplayNodeData data;
 
 				if (i == 0) {
 
+					GUIInspector.usingYarnMappings = true;
+					Object[] yarnDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, yarnLabel));
+					GUIInspector.usingYarnMappings = false;
+					Object[] mojmapDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, mojmapLabel));
+					GUIInspector.usingYarnMappings = usingYarnMappings;
+
 					data = new DrawTexturedQuadData(
-							label, simpleLabel,
-							combineDetails(details, buildGenericFrameDetails(frame, label)),
+							yarnLabel, yarnSimpleLabel,
+							mojmapLabel, mojmapSimpleLabel,
+							yarnDetails, mojmapDetails,
 							Math.round(screenPos1.x), Math.round(screenPos1.y), Math.round(screenPos2.x), Math.round(screenPos2.y)
 					);
 				} else {
+
+					GUIInspector.usingYarnMappings = true;
+					Object[] yarnDetails = buildGenericFrameDetails(frame, yarnLabel);
+					GUIInspector.usingYarnMappings = false;
+					Object[] mojmapDetails = buildGenericFrameDetails(frame, mojmapLabel);
+					GUIInspector.usingYarnMappings = usingYarnMappings;
+
 					data = new SimpleAlternatingDisplayNodeData(
-							label, simpleLabel,
-							buildGenericFrameDetails(frame, label)
+							yarnLabel, yarnSimpleLabel,
+							mojmapLabel, mojmapSimpleLabel,
+							yarnDetails, mojmapDetails
 					);
 				}
 				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
 
-				nodes[i] = new DrawCallDataTreeBuilder(label, data);
+				nodes[i] = new DrawCallDataTreeBuilder(mojmapLabel, data);
 			}
 
 			GUIInspector.treeBuilder.collectChain(nodes);
@@ -498,58 +570,82 @@ public class DrawContextMixin {
 
 			boolean screenDifferent = Math.round(screenPos1.x) != x1 || Math.round(screenPos1.y) != y1 || Math.round(screenPos2.x) != x2 || Math.round(screenPos2.y) != y2;
 
-			Object[] details = new Object[20 + (screenDifferent ? 4 : 0)];
-			int j = 0;
-			details[j++] = "Captured: drawTexturedQuad(Lnet/minecraft/util/Identifier;IIIIIFFFFFFFF)V";
-			details[j++] = "";
-			details[j++] = "Screen Rect:";
-			details[j++] = String.format("\tTop-left: (%d, %d)", x1, y1);
-			details[j++] = String.format("\tBottom-right: (%d, %d)", x2, y2);
-			details[j++] = String.format("\tSize: %d x %d", x2 - x1, y2 - y1);
-			if (screenDifferent) {
+			Supplier<Object[]> computeDetails = () -> {
+				Object[] details = new Object[20 + (screenDifferent ? 4 : 0)];
+				int j = 0;
+				details[j++] = "Captured: " + Descriptors.getDescriptorFromFrame(frames.get(0));
 				details[j++] = "";
-				details[j++] = String.format("\tOn-screen top-left: (%d, %d)", Math.round(screenPos1.x), Math.round(screenPos1.y));
-				details[j++] = String.format("\tOn-screen bottom-right: (%d, %d)", Math.round(screenPos2.x), Math.round(screenPos2.y));
-				details[j++] = String.format("\tOn-screen size: %d x %d", Math.round(screenPos2.x - screenPos1.x), Math.round(screenPos2.y - screenPos1.y));
-			}
-			details[j++] = "";
-			details[j++] = "UV Rect:";
-			details[j++] = String.format("\tNormalized: (%.4f, %.4f) -> (%.4f, %.4f)", u1, v1, u2, v2);
-			details[j++] = String.format("\tPixel: (%d, %d) -> (%d, %d)", px1, py1, px2, py2);
-			details[j++] = "";
-			details[j++] = "Color:";
-			details[j++] = String.format("\tHex: 0x%08X", (Math.round(alpha) & 0xFF) << 24 | (Math.round(red) & 0xFF) << 16 | (Math.round(green) & 0xFF) << 8 | (Math.round(blue) & 0xFF));
-			details[j++] = String.format("\tRGBA: (%d, %d, %d, %d)", (int) (red * 255), (int) (green * 255), (int) (blue * 255), (int) (alpha * 255));
-			details[j++] = String.format("\tAlpha: %.1f%%", alpha * 100);
-			details[j++] = "";
-			details[j++] = "Image:";
-			details[j++] = String.format("\tSize: %d x %d", texWidth, texHeight);
-			details[j++] = subregion == null ? "[Could not display image]" : subregion;
-			details[j] = "";
+				details[j++] = "Screen Rect:";
+				details[j++] = String.format("\tTop-left: (%d, %d)", x1, y1);
+				details[j++] = String.format("\tBottom-right: (%d, %d)", x2, y2);
+				details[j++] = String.format("\tSize: %d x %d", x2 - x1, y2 - y1);
+				if (screenDifferent) {
+					details[j++] = "";
+					details[j++] = String.format("\tOn-screen top-left: (%d, %d)", Math.round(screenPos1.x), Math.round(screenPos1.y));
+					details[j++] = String.format("\tOn-screen bottom-right: (%d, %d)", Math.round(screenPos2.x), Math.round(screenPos2.y));
+					details[j++] = String.format("\tOn-screen size: %d x %d", Math.round(screenPos2.x - screenPos1.x), Math.round(screenPos2.y - screenPos1.y));
+				}
+				details[j++] = "";
+				details[j++] = "UV Rect:";
+				details[j++] = String.format("\tNormalized: (%.4f, %.4f) -> (%.4f, %.4f)", u1, v1, u2, v2);
+				details[j++] = String.format("\tPixel: (%d, %d) -> (%d, %d)", px1, py1, px2, py2);
+				details[j++] = "";
+				details[j++] = "Color:";
+				details[j++] = String.format("\tHex: 0x%08X", (Math.round(alpha) & 0xFF) << 24 | (Math.round(red) & 0xFF) << 16 | (Math.round(green) & 0xFF) << 8 | (Math.round(blue) & 0xFF));
+				details[j++] = String.format("\tRGBA: (%d, %d, %d, %d)", (int) (red * 255), (int) (green * 255), (int) (blue * 255), (int) (alpha * 255));
+				details[j++] = String.format("\tAlpha: %.1f%%", alpha * 100);
+				details[j++] = "";
+				details[j++] = "Image:";
+				details[j++] = String.format("\tSize: %d x %d", texWidth, texHeight);
+				details[j++] = subregion == null ? "[Could not display image]" : subregion;
+				details[j] = "";
+				return details;
+			};
 
 			for (int i = 0; i < frames.size(); i++) {
 				StackWalker.StackFrame frame = frames.get(i);
-				String label = buildFrameLabel(frame);
-				String simpleLabel = buildSimpleFrameLabel(frame);
+
+				boolean usingYarnMappings = GUIInspector.usingYarnMappings;
+				GUIInspector.usingYarnMappings = true;
+				String yarnLabel = buildFrameLabel(frame);
+				String yarnSimpleLabel = buildSimpleFrameLabel(frame);
+				GUIInspector.usingYarnMappings = false;
+				String mojmapLabel = buildFrameLabel(frame);
+				String mojmapSimpleLabel = buildSimpleFrameLabel(frame);
 
 				AlternatingDisplayNodeData data;
 
 				if (i == 0) {
 
+					GUIInspector.usingYarnMappings = true;
+					Object[] yarnDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, yarnLabel));
+					GUIInspector.usingYarnMappings = false;
+					Object[] mojmapDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, mojmapLabel));
+					GUIInspector.usingYarnMappings = usingYarnMappings;
+
 					data = new DrawTexturedQuadData(
-							label, simpleLabel,
-							combineDetails(details, buildGenericFrameDetails(frame, label)),
+							yarnLabel, yarnSimpleLabel,
+							mojmapLabel, mojmapSimpleLabel,
+							yarnDetails, mojmapDetails,
 							Math.round(screenPos1.x), Math.round(screenPos1.y), Math.round(screenPos2.x), Math.round(screenPos2.y)
 					);
 				} else {
+
+					GUIInspector.usingYarnMappings = true;
+					Object[] yarnDetails = buildGenericFrameDetails(frame, yarnLabel);
+					GUIInspector.usingYarnMappings = false;
+					Object[] mojmapDetails = buildGenericFrameDetails(frame, mojmapLabel);
+					GUIInspector.usingYarnMappings = usingYarnMappings;
+
 					data = new SimpleAlternatingDisplayNodeData(
-							label, simpleLabel,
-							buildGenericFrameDetails(frame, label)
+							yarnLabel, yarnSimpleLabel,
+							mojmapLabel, mojmapSimpleLabel,
+							yarnDetails, mojmapDetails
 					);
 				}
 				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
 
-				nodes[i] = new DrawCallDataTreeBuilder(label, data);
+				nodes[i] = new DrawCallDataTreeBuilder(mojmapLabel, data);
 			}
 
 			GUIInspector.treeBuilder.collectChain(nodes);
@@ -575,46 +671,71 @@ public class DrawContextMixin {
 
 			boolean screenDifferent = Math.round(screenPos.x) != x || Math.round(screenPos.y) != y;
 
-			Object[] details = new Object[13 + (screenDifferent ? 1 : 0)];
-			int j = 0;
-			details[j++] = "Captured: drawItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/world/World;Lnet/minecraft/item/ItemStack;III)V";
-			details[j++] = "";
-			details[j++] = "Item:";
-			details[j++] = String.format("\tRaw Name: %s", stack.getItem().getName());
-			details[j++] = String.format("\tLiteral Name: %s", stack.getItem().getName().getString());
-			details[j++] = "";
-			details[j++] = "Position:";
-			details[j++] = String.format("\tDepth (z): %d", z);
-			details[j++] = String.format("\t(x, y): (%d, %d)", x, y);
-			if (screenDifferent) details[j++] = String.format("\tOn-screen (x, y): (%d, %d)", Math.round(screenPos.x), Math.round(screenPos.y));
-			details[j++] = "";
-			details[j++] = "Stack:";
-			details[j++] = "\t" + GUIInspector.getMappedClassName(stack) + "@" + Integer.toHexString(stack.hashCode());
-			details[j] = "";
+			Supplier<Object[]> computeDetails = () -> {
+				Object[] details = new Object[13 + (screenDifferent ? 1 : 0)];
+				int j = 0;
+				details[j++] = "Captured: " + Descriptors.getDescriptorFromFrame(frames.get(0));
+				details[j++] = "";
+				details[j++] = "Item:";
+				details[j++] = String.format("\tRaw Name: %s", stack.getItem().getName());
+				details[j++] = String.format("\tLiteral Name: %s", stack.getItem().getName().getString());
+				details[j++] = "";
+				details[j++] = "Position:";
+				details[j++] = String.format("\tDepth (z): %d", z);
+				details[j++] = String.format("\t(x, y): (%d, %d)", x, y);
+				if (screenDifferent)
+					details[j++] = String.format("\tOn-screen (x, y): (%d, %d)", Math.round(screenPos.x), Math.round(screenPos.y));
+				details[j++] = "";
+				details[j++] = "Stack:";
+				details[j++] = "\t" + GUIInspector.getMappedClassName(stack) + "@" + Integer.toHexString(stack.hashCode());
+				details[j] = "";
+				return details;
+			};
 
 			for (int i = 0; i < frames.size(); i++) {
 				StackWalker.StackFrame frame = frames.get(i);
-				String label = buildFrameLabel(frame);
-				String simpleLabel = buildSimpleFrameLabel(frame);
+
+				boolean usingYarnMappings = GUIInspector.usingYarnMappings;
+				GUIInspector.usingYarnMappings = true;
+				String yarnLabel = buildFrameLabel(frame);
+				String yarnSimpleLabel = buildSimpleFrameLabel(frame);
+				GUIInspector.usingYarnMappings = false;
+				String mojmapLabel = buildFrameLabel(frame);
+				String mojmapSimpleLabel = buildSimpleFrameLabel(frame);
 
 				AlternatingDisplayNodeData data;
 
 				if (i == 0) {
 
+					GUIInspector.usingYarnMappings = true;
+					Object[] yarnDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, yarnLabel));
+					GUIInspector.usingYarnMappings = false;
+					Object[] mojmapDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, mojmapLabel));
+					GUIInspector.usingYarnMappings = usingYarnMappings;
+
 					data = new DrawItemData(
-							label, simpleLabel,
-							combineDetails(details, buildGenericFrameDetails(frame, label)),
+							yarnLabel, yarnSimpleLabel,
+							mojmapLabel, mojmapSimpleLabel,
+							yarnDetails, mojmapDetails,
 							Math.round(screenPos.x), Math.round(screenPos.y)
 					);
 				} else {
+
+					GUIInspector.usingYarnMappings = true;
+					Object[] yarnDetails = buildGenericFrameDetails(frame, yarnLabel);
+					GUIInspector.usingYarnMappings = false;
+					Object[] mojmapDetails = buildGenericFrameDetails(frame, mojmapLabel);
+					GUIInspector.usingYarnMappings = usingYarnMappings;
+
 					data = new SimpleAlternatingDisplayNodeData(
-							label, simpleLabel,
-							buildGenericFrameDetails(frame, label)
+							yarnLabel, yarnSimpleLabel,
+							mojmapLabel, mojmapSimpleLabel,
+							yarnDetails, mojmapDetails
 					);
 				}
 				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
 
-				nodes[i] = new DrawCallDataTreeBuilder(label, data);
+				nodes[i] = new DrawCallDataTreeBuilder(mojmapLabel, data);
 			}
 
 			GUIInspector.treeBuilder.collectChain(nodes);

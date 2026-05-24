@@ -358,62 +358,9 @@ public class GUIInspector implements ClientModInitializer {
 		};
 
 		ActionListener switchBtnActionListener = e -> {
-			if (usingYarnMappings) {
-				if (mappingsResolver.isMojMapLoaded()) {
-					usingYarnMappings = false;
-					updateMappingButtons(ref.switchBtnWidgets, ref.switchBtnDrawCalls);
-					treeWindow.getSelectedTab().getTreeModel().reload();
-					return;
-				}
-
-				JDialog loadingDialog = new JDialog(treeWindow.getFrame(), "Loading mappings", Dialog.ModalityType.APPLICATION_MODAL);
-				loadingDialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
-
-				JLabel label = new JLabel("Loading mappings, please wait...");
-				label.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
-
-				loadingDialog.getContentPane().add(label);
-				loadingDialog.pack();
-				loadingDialog.setLocationRelativeTo(treeWindow.getFrame());
-
-				SwingWorker<Void, Void> worker = new SwingWorker<>() {
-					@Override
-					protected Void doInBackground() {
-						synchronized (mappingLock) {
-							try {
-								mappingsResolver.loadMojMap();
-								usingYarnMappings = false;
-							} catch (MappingsResolver.MappingsException ex) {
-								throw new RuntimeException(ex);
-							}
-						}
-						return null;
-					}
-
-					@Override
-					protected void done() {
-						loadingDialog.dispose();
-						updateMappingButtons(ref.switchBtnWidgets, ref.switchBtnDrawCalls);
-
-						try {
-							get();
-						} catch (Exception ex) {
-							JOptionPane.showMessageDialog(treeWindow.getFrame(),
-									"Failed to load MojMap: " + ex.getMessage(),
-									"Error",
-									JOptionPane.ERROR_MESSAGE);
-						}
-						treeWindow.getSelectedTab().getTreeModel().reload();
-					}
-				};
-
-				worker.execute();
-				loadingDialog.setVisible(true);
-			} else {
-				usingYarnMappings = true;
-				updateMappingButtons(ref.switchBtnWidgets, ref.switchBtnDrawCalls);
-				treeWindow.getSelectedTab().getTreeModel().reload();
-			}
+			usingYarnMappings = !usingYarnMappings;
+			updateMappingButtons(ref.switchBtnWidgets, ref.switchBtnDrawCalls);
+			treeWindow.getSelectedTab().getTreeModel().reload();
 		};
 		ref.switchBtnWidgets = createMappingToggleButton(switchBtnActionListener);
 		ref.switchBtnDrawCalls = createMappingToggleButton(switchBtnActionListener);
@@ -421,6 +368,50 @@ public class GUIInspector implements ClientModInitializer {
 		drawCalls.getToolbar().add(ref.switchBtnDrawCalls);
 
 		treeWindow.show();
+
+
+		JDialog loadingDialog = new JDialog(treeWindow.getFrame(), "Loading mappings", Dialog.ModalityType.APPLICATION_MODAL);
+		loadingDialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
+
+		JLabel label = new JLabel("Loading mappings, please wait...");
+		label.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+		loadingDialog.getContentPane().add(label);
+		loadingDialog.pack();
+		loadingDialog.setLocationRelativeTo(treeWindow.getFrame());
+
+		SwingWorker<Void, Void> worker = new SwingWorker<>() {
+			@Override
+			protected Void doInBackground() {
+				synchronized (mappingLock) {
+					try {
+						mappingsResolver.loadMojMap();
+					} catch (MappingsResolver.MappingsException ex) {
+						throw new RuntimeException(ex);
+					}
+				}
+				return null;
+			}
+
+			@Override
+			protected void done() {
+				loadingDialog.dispose();
+				updateMappingButtons(ref.switchBtnWidgets, ref.switchBtnDrawCalls);
+
+				try {
+					get();
+				} catch (Exception ex) {
+					JOptionPane.showMessageDialog(treeWindow.getFrame(),
+							"Failed to load MojMap: " + ex.getMessage(),
+							"Error",
+							JOptionPane.ERROR_MESSAGE);
+				}
+				treeWindow.getSelectedTab().getTreeModel().reload();
+			}
+		};
+
+		worker.execute();
+		loadingDialog.setVisible(true);
 
 		// maybe add some sort of key combo for inspector mode later?
 //		ClientTickEvents.END_CLIENT_TICK.register(client -> {

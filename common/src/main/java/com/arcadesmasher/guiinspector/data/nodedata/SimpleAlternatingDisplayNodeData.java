@@ -1,7 +1,7 @@
 package com.arcadesmasher.guiinspector.data.nodedata;
 
 public class SimpleAlternatingDisplayNodeData extends AlternatingDisplayNodeData {
-	public SimpleAlternatingDisplayNodeData(String label, String simpleLabel, Object[] details) {
-		super(label, simpleLabel, details);
+	public SimpleAlternatingDisplayNodeData(String yarnLabel, String yarnSimpleLabel, String mojmapLabel, String mojmapSimpleLabel, Object[] yarnDetails, Object[] mojmapDetails) {
+		super(yarnLabel, yarnSimpleLabel, mojmapLabel, mojmapSimpleLabel, yarnDetails, mojmapDetails);
 	}
 }

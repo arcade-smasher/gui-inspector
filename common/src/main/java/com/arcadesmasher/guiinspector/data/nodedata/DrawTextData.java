@@ -8,8 +8,8 @@ public final class DrawTextData extends AlternatingDisplayNodeData implements Dr
 	private final int y;
 	private final int width;
 
-	public DrawTextData(String display, String altDisplay, Object[] details, int x, int y, int width) {
-		super(display, altDisplay, details);
+	public DrawTextData(String yarnLabel, String yarnSimpleLabel, String mojmapLabel, String mojmapSimpleLabel, Object[] yarnDetails, Object[] mojmapDetails, int x, int y, int width) {
+		super(yarnLabel, yarnSimpleLabel, mojmapLabel, mojmapSimpleLabel, yarnDetails, mojmapDetails);
 		this.x = x;
 		this.y = y;
 		this.width = width;

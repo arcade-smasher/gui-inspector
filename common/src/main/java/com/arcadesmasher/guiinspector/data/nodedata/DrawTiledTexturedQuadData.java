@@ -9,8 +9,8 @@ public final class DrawTiledTexturedQuadData extends AlternatingDisplayNodeData 
 	private final int x1;
 	private final int y1;
 
-	public DrawTiledTexturedQuadData(String display, String altDisplay, Object[] details, int x0, int y0, int x1, int y1) {
-		super(display, altDisplay, details);
+	public DrawTiledTexturedQuadData(String yarnLabel, String yarnSimpleLabel, String mojmapLabel, String mojmapSimpleLabel, Object[] yarnDetails, Object[] mojmapDetails, int x0, int y0, int x1, int y1) {
+		super(yarnLabel, yarnSimpleLabel, mojmapLabel, mojmapSimpleLabel, yarnDetails, mojmapDetails);
 		this.x0 = x0;
 		this.y0 = y0;
 		this.x1 = x1;

@@ -1,13 +1,17 @@
 package com.arcadesmasher.guiinspector.data.nodedata;
 
+import com.arcadesmasher.guiinspector.GUIInspector;
+
 public abstract class AlternatingDisplayNodeData extends AbstractNodeData {
 
-	private final String altDisplay;
+	private final String yarnAltDisplay;
+	private final String mojmapAltDisplay;
 	private boolean isAltDisplay = false;
 
-	protected AlternatingDisplayNodeData(String display, String altDisplay, Object[] details) {
-		super(display, details);
-		this.altDisplay = altDisplay;
+	protected AlternatingDisplayNodeData(String yarnDisplay, String yarnAltDisplay, String mojmapDisplay, String mojmapAltDisplay, Object[] yarnDetails, Object[] mojmapDetails) {
+		super(yarnDisplay, mojmapDisplay, yarnDetails, mojmapDetails);
+		this.yarnAltDisplay = yarnAltDisplay;
+		this.mojmapAltDisplay = mojmapAltDisplay;
 	}
 
 	/**
@@ -28,6 +32,6 @@ public abstract class AlternatingDisplayNodeData extends AbstractNodeData {
 
 	@Override
 	public String display() {
-		return isAltDisplay ? altDisplay : super.display();
+		return isAltDisplay ? (GUIInspector.usingYarnMappings ? yarnAltDisplay : mojmapAltDisplay) : super.display();
 	}
 }

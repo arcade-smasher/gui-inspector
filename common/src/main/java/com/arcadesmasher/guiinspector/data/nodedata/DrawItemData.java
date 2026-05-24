@@ -7,8 +7,8 @@ public final class DrawItemData extends AlternatingDisplayNodeData implements Dr
 	private final int x;
 	private final int y;
 
-	public DrawItemData(String display, String altDisplay, Object[] details, int x, int y) {
-		super(display, altDisplay, details);
+	public DrawItemData(String yarnDisplay, String yarnAltDisplay, String mojmapDisplay, String mojmapAltDisplay, Object[] yarnDetails, Object[] mojmapDetails, int x, int y) {
+		super(yarnDisplay, yarnAltDisplay, mojmapDisplay, mojmapAltDisplay, yarnDetails, mojmapDetails);
 		this.x = x;
 		this.y = y;
 	}

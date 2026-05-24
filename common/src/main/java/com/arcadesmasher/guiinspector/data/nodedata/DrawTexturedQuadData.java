@@ -9,8 +9,8 @@ public final class DrawTexturedQuadData extends AlternatingDisplayNodeData imple
 	private final int x2;
 	private final int y2;
 
-	public DrawTexturedQuadData(String display, String altDisplay, Object[] details, int x1, int y1, int x2, int y2) {
-		super(display, altDisplay, details);
+	public DrawTexturedQuadData(String yarnLabel, String yarnSimpleLabel, String mojmapLabel, String mojmapSimpleLabel, Object[] yarnDetails, Object[] mojmapDetails, int x1, int y1, int x2, int y2) {
+		super(yarnLabel, yarnSimpleLabel, mojmapLabel, mojmapSimpleLabel, yarnDetails, mojmapDetails);
 		this.x1 = x1;
 		this.y1 = y1;
 		this.x2 = x2;
