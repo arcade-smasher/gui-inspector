@@ -33,80 +33,6 @@ import java.util.function.Supplier;
 public class DrawContextMixin {
 
 	@Unique
-	private static List<StackWalker.StackFrame> getFrames(int skip) {
-		return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
-				.walk(s -> s.skip(1 + skip).toList());
-	}
-
-	@Unique
-	private static Object[] buildGenericFrameDetails(StackWalker.StackFrame frame) {
-		return buildGenericFrameDetails(frame, null);
-	}
-
-	@Unique
-	private static Object[] buildGenericFrameDetails(StackWalker.StackFrame frame, String label) {
-		return new Object[]{
-				"Full method: " +	(label != null ? label : buildFrameLabel(frame)),
-				"Class: " +			GUIInspector.getMappedClassName(frame.getDeclaringClass()),
-				"Method: " +		GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()),
-				"File: " +			frame.getFileName(),
-				"Line: " +			frame.getLineNumber(),
-				"Native: " +		frame.isNativeMethod(),
-				"Module: " +		(frame.getDeclaringClass().getModule() != null ? frame.getDeclaringClass().getModule().getName() : "unknown"),
-				"Package: " +		frame.getClassName().substring(0, Math.max(frame.getClassName().lastIndexOf('.'), 0))
-		};
-	}
-
-	@Unique
-	private static Object[] combineDetails(Object[] first, Object[] second) {
-		Object[] combined = new Object[first.length + second.length];
-		System.arraycopy(first, 0, combined, 0, first.length);
-		System.arraycopy(second, 0, combined, first.length, second.length);
-		return combined;
-	}
-
-	@Unique
-	private static String buildFrameLabel(StackWalker.StackFrame frame) {
-		StringBuilder sb = new StringBuilder();
-
-		sb.append(GUIInspector.getMappedClassName(frame.getDeclaringClass()))
-				.append('@')
-				.append(Integer.toHexString(frame.getDeclaringClass().hashCode()))
-				.append("    ")
-				.append(GUIInspector.getMappedClassName(frame.getMethodType().returnType()))
-				.append(' ')
-				.append(GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()))
-				.append('(');
-
-		boolean first = true;
-		for (var param : frame.getMethodType().parameterList()) {
-			if (!first) sb.append(", ");
-			sb.append(GUIInspector.getMappedClassName(param));
-			first = false;
-		}
-
-		sb.append(')');
-
-		return sb.toString();
-	}
-
-	@Unique
-	private String buildSimpleFrameLabel(StackWalker.StackFrame frame) {
-		return GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()) + "(...)";
-	}
-
-	// returns [a, r, g, b]
-	@Unique
-	private static int[] decodeColor(int color) {
-		return new int[]{
-				(color >> 24) & 0xFF,
-				(color >> 16) & 0xFF,
-				(color >> 8)  & 0xFF,
-				color & 0xFF
-		};
-	}
-
-	@Unique
 	private static BufferedImage getImageFromIdentifier(Identifier id) {
 		try {
 			MinecraftClient client = MinecraftClient.getInstance();
@@ -183,14 +109,14 @@ public class DrawContextMixin {
 	private void injectFill(RenderLayer layer, int x1, int y1, int x2, int y2, int z, int color, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
-		List<StackWalker.StackFrame> frames = getFrames(1);
+		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
 
 		// the class that draws this mod's outline around objects. stack traces containing it are skipped because it means the stack can't have any meaningful info for the user
 		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(GUIInspector.class));
 
 		if (!shouldSkip) {
 
-			int[] argb = decodeColor(color);
+			int[] argb = GUIInspector.decodeColor(color);
 			int a1 = argb[0], r1 = argb[1], g1 = argb[2], b1 = argb[3];
 
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
@@ -238,20 +164,20 @@ public class DrawContextMixin {
 
 				boolean usingYarnMappings = GUIInspector.usingYarnMappings;
 				GUIInspector.usingYarnMappings = true;
-				String yarnLabel = buildFrameLabel(frame);
-				String yarnSimpleLabel = buildSimpleFrameLabel(frame);
+				String yarnLabel = GUIInspector.buildFrameLabel(frame);
+				String yarnSimpleLabel = GUIInspector.buildSimpleFrameLabel(frame);
 				GUIInspector.usingYarnMappings = false;
-				String mojmapLabel = buildFrameLabel(frame);
-				String mojmapSimpleLabel = buildSimpleFrameLabel(frame);
+				String mojmapLabel = GUIInspector.buildFrameLabel(frame);
+				String mojmapSimpleLabel = GUIInspector.buildSimpleFrameLabel(frame);
 
 				AlternatingDisplayNodeData data;
 
 				if (i == 0) {
 
 					GUIInspector.usingYarnMappings = true;
-					Object[] yarnDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, yarnLabel));
+					Object[] yarnDetails = GUIInspector.combineDetails(computeDetails.get(), GUIInspector.buildGenericFrameDetails(frame, yarnLabel));
 					GUIInspector.usingYarnMappings = false;
-					Object[] mojmapDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, mojmapLabel));
+					Object[] mojmapDetails = GUIInspector.combineDetails(computeDetails.get(), GUIInspector.buildGenericFrameDetails(frame, mojmapLabel));
 					GUIInspector.usingYarnMappings = usingYarnMappings;
 
 					data = new FillData(
@@ -263,9 +189,9 @@ public class DrawContextMixin {
 				} else {
 
 					GUIInspector.usingYarnMappings = true;
-					Object[] yarnDetails = buildGenericFrameDetails(frame, yarnLabel);
+					Object[] yarnDetails = GUIInspector.buildGenericFrameDetails(frame, yarnLabel);
 					GUIInspector.usingYarnMappings = false;
-					Object[] mojmapDetails = buildGenericFrameDetails(frame, mojmapLabel);
+					Object[] mojmapDetails = GUIInspector.buildGenericFrameDetails(frame, mojmapLabel);
 					GUIInspector.usingYarnMappings = usingYarnMappings;
 
 					data = new SimpleAlternatingDisplayNodeData(
@@ -276,7 +202,7 @@ public class DrawContextMixin {
 				}
 				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
 
-				nodes[i] = new DrawCallDataTreeBuilder(mojmapLabel, data);
+				nodes[i] = new DrawCallDataTreeBuilder(GUIInspector.buildFrameLabelNoMap(frame), data);
 			}
 
 			GUIInspector.treeBuilder.collectChain(nodes);
@@ -304,7 +230,7 @@ public class DrawContextMixin {
 	private void injectDrawText(TextRenderer textRenderer, Supplier<String> getText, IntSupplier getWidth, int x, int y, int color, boolean shadow) {
 		if (!GUIInspector.drawCapture) return;
 
-		List<StackWalker.StackFrame> frames = getFrames(2);
+		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(2);
 
 		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(GUIInspector.class));
 
@@ -313,7 +239,7 @@ public class DrawContextMixin {
 			String content = getText.get();
 
 			int width = getWidth.getAsInt();
-			int[] argb = decodeColor(color);
+			int[] argb = GUIInspector.decodeColor(color);
 			int a = argb[0], r = argb[1], g = argb[2], b = argb[3];
 
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
@@ -358,20 +284,20 @@ public class DrawContextMixin {
 
 				boolean usingYarnMappings = GUIInspector.usingYarnMappings;
 				GUIInspector.usingYarnMappings = true;
-				String yarnLabel = buildFrameLabel(frame);
-				String yarnSimpleLabel = buildSimpleFrameLabel(frame);
+				String yarnLabel = GUIInspector.buildFrameLabel(frame);
+				String yarnSimpleLabel = GUIInspector.buildSimpleFrameLabel(frame);
 				GUIInspector.usingYarnMappings = false;
-				String mojmapLabel = buildFrameLabel(frame);
-				String mojmapSimpleLabel = buildSimpleFrameLabel(frame);
+				String mojmapLabel = GUIInspector.buildFrameLabel(frame);
+				String mojmapSimpleLabel = GUIInspector.buildSimpleFrameLabel(frame);
 
 				AlternatingDisplayNodeData data;
 
 				if (i == 0) {
 
 					GUIInspector.usingYarnMappings = true;
-					Object[] yarnDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, yarnLabel));
+					Object[] yarnDetails = GUIInspector.combineDetails(computeDetails.get(), GUIInspector.buildGenericFrameDetails(frame, yarnLabel));
 					GUIInspector.usingYarnMappings = false;
-					Object[] mojmapDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, mojmapLabel));
+					Object[] mojmapDetails = GUIInspector.combineDetails(computeDetails.get(), GUIInspector.buildGenericFrameDetails(frame, mojmapLabel));
 					GUIInspector.usingYarnMappings = usingYarnMappings;
 
 					data = new DrawTextData(
@@ -383,9 +309,9 @@ public class DrawContextMixin {
 				} else {
 
 					GUIInspector.usingYarnMappings = true;
-					Object[] yarnDetails = buildGenericFrameDetails(frame, yarnLabel);
+					Object[] yarnDetails = GUIInspector.buildGenericFrameDetails(frame, yarnLabel);
 					GUIInspector.usingYarnMappings = false;
-					Object[] mojmapDetails = buildGenericFrameDetails(frame, mojmapLabel);
+					Object[] mojmapDetails = GUIInspector.buildGenericFrameDetails(frame, mojmapLabel);
 					GUIInspector.usingYarnMappings = usingYarnMappings;
 
 					data = new SimpleAlternatingDisplayNodeData(
@@ -396,7 +322,7 @@ public class DrawContextMixin {
 				}
 				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
 
-				nodes[i] = new DrawCallDataTreeBuilder(mojmapLabel, data);
+				nodes[i] = new DrawCallDataTreeBuilder(GUIInspector.buildFrameLabelNoMap(frame), data);
 			}
 
 			GUIInspector.treeBuilder.collectChain(nodes);
@@ -408,7 +334,7 @@ public class DrawContextMixin {
 	private void injectDrawTexturedQuad1(Identifier texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
-		List<StackWalker.StackFrame> frames = getFrames(1);
+		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
 
 		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(GUIInspector.class));
 
@@ -480,20 +406,20 @@ public class DrawContextMixin {
 
 				boolean usingYarnMappings = GUIInspector.usingYarnMappings;
 				GUIInspector.usingYarnMappings = true;
-				String yarnLabel = buildFrameLabel(frame);
-				String yarnSimpleLabel = buildSimpleFrameLabel(frame);
+				String yarnLabel = GUIInspector.buildFrameLabel(frame);
+				String yarnSimpleLabel = GUIInspector.buildSimpleFrameLabel(frame);
 				GUIInspector.usingYarnMappings = false;
-				String mojmapLabel = buildFrameLabel(frame);
-				String mojmapSimpleLabel = buildSimpleFrameLabel(frame);
+				String mojmapLabel = GUIInspector.buildFrameLabel(frame);
+				String mojmapSimpleLabel = GUIInspector.buildSimpleFrameLabel(frame);
 
 				AlternatingDisplayNodeData data;
 
 				if (i == 0) {
 
 					GUIInspector.usingYarnMappings = true;
-					Object[] yarnDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, yarnLabel));
+					Object[] yarnDetails = GUIInspector.combineDetails(computeDetails.get(), GUIInspector.buildGenericFrameDetails(frame, yarnLabel));
 					GUIInspector.usingYarnMappings = false;
-					Object[] mojmapDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, mojmapLabel));
+					Object[] mojmapDetails = GUIInspector.combineDetails(computeDetails.get(), GUIInspector.buildGenericFrameDetails(frame, mojmapLabel));
 					GUIInspector.usingYarnMappings = usingYarnMappings;
 
 					data = new DrawTexturedQuadData(
@@ -505,9 +431,9 @@ public class DrawContextMixin {
 				} else {
 
 					GUIInspector.usingYarnMappings = true;
-					Object[] yarnDetails = buildGenericFrameDetails(frame, yarnLabel);
+					Object[] yarnDetails = GUIInspector.buildGenericFrameDetails(frame, yarnLabel);
 					GUIInspector.usingYarnMappings = false;
-					Object[] mojmapDetails = buildGenericFrameDetails(frame, mojmapLabel);
+					Object[] mojmapDetails = GUIInspector.buildGenericFrameDetails(frame, mojmapLabel);
 					GUIInspector.usingYarnMappings = usingYarnMappings;
 
 					data = new SimpleAlternatingDisplayNodeData(
@@ -518,7 +444,7 @@ public class DrawContextMixin {
 				}
 				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
 
-				nodes[i] = new DrawCallDataTreeBuilder(mojmapLabel, data);
+				nodes[i] = new DrawCallDataTreeBuilder(GUIInspector.buildFrameLabelNoMap(frame), data);
 			}
 
 			GUIInspector.treeBuilder.collectChain(nodes);
@@ -530,7 +456,7 @@ public class DrawContextMixin {
 	private void injectDrawTexturedQuad2(Identifier texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, float red, float green, float blue, float alpha, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
-		List<StackWalker.StackFrame> frames = getFrames(1);
+		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
 
 		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(GUIInspector.class));
 
@@ -607,20 +533,20 @@ public class DrawContextMixin {
 
 				boolean usingYarnMappings = GUIInspector.usingYarnMappings;
 				GUIInspector.usingYarnMappings = true;
-				String yarnLabel = buildFrameLabel(frame);
-				String yarnSimpleLabel = buildSimpleFrameLabel(frame);
+				String yarnLabel = GUIInspector.buildFrameLabel(frame);
+				String yarnSimpleLabel = GUIInspector.buildSimpleFrameLabel(frame);
 				GUIInspector.usingYarnMappings = false;
-				String mojmapLabel = buildFrameLabel(frame);
-				String mojmapSimpleLabel = buildSimpleFrameLabel(frame);
+				String mojmapLabel = GUIInspector.buildFrameLabel(frame);
+				String mojmapSimpleLabel = GUIInspector.buildSimpleFrameLabel(frame);
 
 				AlternatingDisplayNodeData data;
 
 				if (i == 0) {
 
 					GUIInspector.usingYarnMappings = true;
-					Object[] yarnDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, yarnLabel));
+					Object[] yarnDetails = GUIInspector.combineDetails(computeDetails.get(), GUIInspector.buildGenericFrameDetails(frame, yarnLabel));
 					GUIInspector.usingYarnMappings = false;
-					Object[] mojmapDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, mojmapLabel));
+					Object[] mojmapDetails = GUIInspector.combineDetails(computeDetails.get(), GUIInspector.buildGenericFrameDetails(frame, mojmapLabel));
 					GUIInspector.usingYarnMappings = usingYarnMappings;
 
 					data = new DrawTexturedQuadData(
@@ -632,9 +558,9 @@ public class DrawContextMixin {
 				} else {
 
 					GUIInspector.usingYarnMappings = true;
-					Object[] yarnDetails = buildGenericFrameDetails(frame, yarnLabel);
+					Object[] yarnDetails = GUIInspector.buildGenericFrameDetails(frame, yarnLabel);
 					GUIInspector.usingYarnMappings = false;
-					Object[] mojmapDetails = buildGenericFrameDetails(frame, mojmapLabel);
+					Object[] mojmapDetails = GUIInspector.buildGenericFrameDetails(frame, mojmapLabel);
 					GUIInspector.usingYarnMappings = usingYarnMappings;
 
 					data = new SimpleAlternatingDisplayNodeData(
@@ -645,7 +571,7 @@ public class DrawContextMixin {
 				}
 				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
 
-				nodes[i] = new DrawCallDataTreeBuilder(mojmapLabel, data);
+				nodes[i] = new DrawCallDataTreeBuilder(GUIInspector.buildFrameLabelNoMap(frame), data);
 			}
 
 			GUIInspector.treeBuilder.collectChain(nodes);
@@ -656,7 +582,7 @@ public class DrawContextMixin {
 	private void injectDrawItem(LivingEntity entity, World world, ItemStack stack, int x, int y, int seed, int z, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
-		List<StackWalker.StackFrame> frames = getFrames(1);
+		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
 
 		boolean shouldSkip = frames.stream().anyMatch(frame -> frame.getDeclaringClass().equals(GUIInspector.class));
 
@@ -697,20 +623,20 @@ public class DrawContextMixin {
 
 				boolean usingYarnMappings = GUIInspector.usingYarnMappings;
 				GUIInspector.usingYarnMappings = true;
-				String yarnLabel = buildFrameLabel(frame);
-				String yarnSimpleLabel = buildSimpleFrameLabel(frame);
+				String yarnLabel = GUIInspector.buildFrameLabel(frame);
+				String yarnSimpleLabel = GUIInspector.buildSimpleFrameLabel(frame);
 				GUIInspector.usingYarnMappings = false;
-				String mojmapLabel = buildFrameLabel(frame);
-				String mojmapSimpleLabel = buildSimpleFrameLabel(frame);
+				String mojmapLabel = GUIInspector.buildFrameLabel(frame);
+				String mojmapSimpleLabel = GUIInspector.buildSimpleFrameLabel(frame);
 
 				AlternatingDisplayNodeData data;
 
 				if (i == 0) {
 
 					GUIInspector.usingYarnMappings = true;
-					Object[] yarnDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, yarnLabel));
+					Object[] yarnDetails = GUIInspector.combineDetails(computeDetails.get(), GUIInspector.buildGenericFrameDetails(frame, yarnLabel));
 					GUIInspector.usingYarnMappings = false;
-					Object[] mojmapDetails = combineDetails(computeDetails.get(), buildGenericFrameDetails(frame, mojmapLabel));
+					Object[] mojmapDetails = GUIInspector.combineDetails(computeDetails.get(), GUIInspector.buildGenericFrameDetails(frame, mojmapLabel));
 					GUIInspector.usingYarnMappings = usingYarnMappings;
 
 					data = new DrawItemData(
@@ -722,9 +648,9 @@ public class DrawContextMixin {
 				} else {
 
 					GUIInspector.usingYarnMappings = true;
-					Object[] yarnDetails = buildGenericFrameDetails(frame, yarnLabel);
+					Object[] yarnDetails = GUIInspector.buildGenericFrameDetails(frame, yarnLabel);
 					GUIInspector.usingYarnMappings = false;
-					Object[] mojmapDetails = buildGenericFrameDetails(frame, mojmapLabel);
+					Object[] mojmapDetails = GUIInspector.buildGenericFrameDetails(frame, mojmapLabel);
 					GUIInspector.usingYarnMappings = usingYarnMappings;
 
 					data = new SimpleAlternatingDisplayNodeData(
@@ -735,7 +661,7 @@ public class DrawContextMixin {
 				}
 				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
 
-				nodes[i] = new DrawCallDataTreeBuilder(mojmapLabel, data);
+				nodes[i] = new DrawCallDataTreeBuilder(GUIInspector.buildFrameLabelNoMap(frame), data);
 			}
 
 			GUIInspector.treeBuilder.collectChain(nodes);

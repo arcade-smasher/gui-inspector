@@ -37,6 +37,7 @@ import net.minecraft.screen.slot.Slot;
 import net.minecraft.text.Text;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import javax.swing.*;
@@ -659,6 +660,99 @@ public class GUIInspector implements ClientModInitializer {
 		context.fill(left, top, left + 1, bottom, red);
 		// right
 		context.fill(right - 1, top, right, bottom, red);
+	}
+
+
+
+	public static List<StackWalker.StackFrame> getFrames(int skip) {
+		return StackWalker.getInstance(StackWalker.Option.RETAIN_CLASS_REFERENCE)
+				.walk(s -> s.skip(1 + skip).toList());
+	}
+
+	public static Object[] buildGenericFrameDetails(StackWalker.StackFrame frame) {
+		return buildGenericFrameDetails(frame, null);
+	}
+
+	public static Object[] buildGenericFrameDetails(StackWalker.StackFrame frame, String label) {
+		return new Object[]{
+				"Full method: " +	(label != null ? label : buildFrameLabel(frame)),
+				"Class: " +			GUIInspector.getMappedClassName(frame.getDeclaringClass()),
+				"Method: " +		GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()),
+				"File: " +			frame.getFileName(),
+				"Line: " +			frame.getLineNumber(),
+				"Native: " +		frame.isNativeMethod(),
+				"Module: " +		(frame.getDeclaringClass().getModule() != null ? frame.getDeclaringClass().getModule().getName() : "unknown"),
+				"Package: " +		frame.getClassName().substring(0, Math.max(frame.getClassName().lastIndexOf('.'), 0))
+		};
+	}
+
+	public static Object[] combineDetails(Object[] first, Object[] second) {
+		Object[] combined = new Object[first.length + second.length];
+		System.arraycopy(first, 0, combined, 0, first.length);
+		System.arraycopy(second, 0, combined, first.length, second.length);
+		return combined;
+	}
+
+	public static String buildFrameLabel(StackWalker.StackFrame frame) {
+		StringBuilder sb = new StringBuilder();
+
+		sb.append(GUIInspector.getMappedClassName(frame.getDeclaringClass()))
+				.append('@')
+				.append(Integer.toHexString(frame.getDeclaringClass().hashCode()))
+				.append("    ")
+				.append(GUIInspector.getMappedClassName(frame.getMethodType().returnType()))
+				.append(' ')
+				.append(GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()))
+				.append('(');
+
+		boolean first = true;
+		for (var param : frame.getMethodType().parameterList()) {
+			if (!first) sb.append(", ");
+			sb.append(GUIInspector.getMappedClassName(param));
+			first = false;
+		}
+
+		sb.append(')');
+
+		return sb.toString();
+	}
+
+	public static String buildFrameLabelNoMap(StackWalker.StackFrame frame) {
+		StringBuilder sb = new StringBuilder();
+
+		sb.append(frame.getDeclaringClass())
+				.append('@')
+				.append(Integer.toHexString(frame.getDeclaringClass().hashCode()))
+				.append("    ")
+				.append(frame.getMethodType().returnType())
+				.append(' ')
+				.append(frame.getDeclaringClass())
+				.append('(');
+
+		boolean first = true;
+		for (var param : frame.getMethodType().parameterList()) {
+			if (!first) sb.append(", ");
+			sb.append(param);
+			first = false;
+		}
+
+		sb.append(')');
+
+		return sb.toString();
+	}
+
+	public static String buildSimpleFrameLabel(StackWalker.StackFrame frame) {
+		return GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()) + "(...)";
+	}
+
+	// returns [a, r, g, b]
+	public static int[] decodeColor(int color) {
+		return new int[]{
+				(color >> 24) & 0xFF,
+				(color >> 16) & 0xFF,
+				(color >> 8)  & 0xFF,
+				color & 0xFF
+		};
 	}
 
 	public static void MouseMixin_onMouseButton(Object self, long window, int button, int action, CallbackInfo ci) {
