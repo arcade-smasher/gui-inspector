@@ -2,7 +2,7 @@ package com.arcadesmasher.guiinspector.data.nodedata;
 
 import com.arcadesmasher.guiinspector.GUIInspector;
 
-public abstract class AlternatingDisplayNodeData extends AbstractNodeData {
+public abstract class AlternatingDisplayNodeData extends com.arcadesmasher.guiinspector.data.nodedata.AbstractNodeData {
 
 	private final String yarnAltDisplay;
 	private final String mojmapAltDisplay;

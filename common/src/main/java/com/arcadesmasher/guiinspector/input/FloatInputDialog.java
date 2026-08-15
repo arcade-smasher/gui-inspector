@@ -5,7 +5,7 @@ import java.awt.*;
 import java.text.ParseException;
 import java.util.Optional;
 
-public class FloatInputDialog extends InputDialog<Float> {
+public class FloatInputDialog extends com.arcadesmasher.guiinspector.input.InputDialog<Float> {
 
 	private FloatInputDialog(Frame parent, String title, String label, float init, float min, float max) {
 		super(parent, title);

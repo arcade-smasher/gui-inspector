@@ -2,16 +2,6 @@ package com.arcadesmasher.guiinspector.mixin;
 
 import com.arcadesmasher.guiinspector.*;
 import com.arcadesmasher.guiinspector.data.nodedata.*;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.resource.Resource;
-import net.minecraft.text.OrderedText;
-import net.minecraft.util.Identifier;
-import net.minecraft.world.World;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
@@ -22,6 +12,16 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import javax.imageio.ImageIO;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
 import java.util.List;
@@ -29,13 +29,13 @@ import java.util.Optional;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
 
-@Mixin(DrawContext.class)
+@Mixin(GuiGraphics.class)
 public class DrawContextMixin {
 
 	@Unique
-	private static BufferedImage getImageFromIdentifier(Identifier id) {
+	private static BufferedImage getImageFromIdentifier(ResourceLocation id) {
 		try {
-			MinecraftClient client = MinecraftClient.getInstance();
+			Minecraft client = Minecraft.getInstance();
 			Optional<Resource> resourceOptional = client.getResourceManager().getResource(id);
 
 			if (resourceOptional.isEmpty()) {
@@ -45,7 +45,7 @@ public class DrawContextMixin {
 
 			Resource resource = resourceOptional.get();
 
-			try (InputStream stream = resource.getInputStream()) {
+			try (InputStream stream = resource.open()) {
 				return ImageIO.read(stream);
 			}
 
@@ -56,7 +56,7 @@ public class DrawContextMixin {
 	}
 
 	@Unique
-	private static BufferedImage getImageFromIdentifier(Identifier id, float u1, float v1, float u2, float v2) {
+	private static BufferedImage getImageFromIdentifier(ResourceLocation id, float u1, float v1, float u2, float v2) {
 
 		BufferedImage image = getImageFromIdentifier(id);
 
@@ -105,8 +105,8 @@ public class DrawContextMixin {
 		return image.getSubimage(minX, minY, subWidth, subHeight);
 	}
 
-	@Inject(method = "fill(Lnet/minecraft/client/render/RenderLayer;IIIIII)V", at = @At("HEAD"))
-	private void injectFill(RenderLayer layer, int x1, int y1, int x2, int y2, int z, int color, CallbackInfo ci) {
+	@Inject(method = "fill(Lnet/minecraft/client/renderer/RenderType;IIIIII)V", at = @At("HEAD"))
+	private void injectFill(RenderType layer, int x1, int y1, int x2, int y2, int z, int color, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
@@ -121,9 +121,9 @@ public class DrawContextMixin {
 
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
 
-			DrawContext context = ((DrawContext) (Object) this);
+			GuiGraphics context = ((GuiGraphics) (Object) this);
 
-			Matrix4f matrix = context.getMatrices().peek().getPositionMatrix();
+			Matrix4f matrix = context.pose().last().pose();
 
 			Vector3f screenPos1 = new Vector3f(x1, y1, 0.0f);
 			Vector3f screenPos2 = new Vector3f(x2, y2, 0.0f);
@@ -153,7 +153,7 @@ public class DrawContextMixin {
 				details[j++] = "";
 				details[j++] = String.format("Solid Color:\n\t0x%08X RGBA(%d,%d,%d,%d)", color, r1, g1, b1, a1);
 				details[j++] = "";
-				details[j++] = GUIInspector.getMappedClassName(RenderLayer.class) + ":";
+				details[j++] = GUIInspector.getMappedClassName(RenderType.class) + ":";
 				details[j++] = "\t" + GUIInspector.getMappedClassName(layer) + "@" + Integer.toHexString(layer.hashCode());
 				details[j] = "";
 				return details;
@@ -209,13 +209,13 @@ public class DrawContextMixin {
 		}
 	}
 
-	@Inject(method = "drawText(Lnet/minecraft/client/font/TextRenderer;Ljava/lang/String;IIIZ)I", at = @At("HEAD"))
-	private void injectDrawText1(TextRenderer textRenderer, String text, int x, int y, int color, boolean shadow, CallbackInfoReturnable<Integer> cir) {
-		injectDrawText(textRenderer, () -> text, () -> textRenderer.getWidth(text), x, y, color, shadow);
+	@Inject(method = "drawString(Lnet/minecraft/client/gui/Font;Ljava/lang/String;IIIZ)I", at = @At("HEAD"))
+	private void injectDrawText1(Font textRenderer, String text, int x, int y, int color, boolean shadow, CallbackInfoReturnable<Integer> cir) {
+		injectDrawText(textRenderer, () -> text, () -> textRenderer.width(text), x, y, color, shadow);
 	}
 
-	@Inject(method = "drawText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/OrderedText;IIIZ)I", at = @At("HEAD"))
-	private void injectDrawText2(TextRenderer textRenderer, OrderedText text, int x, int y, int color, boolean shadow, CallbackInfoReturnable<Integer> cir) {
+	@Inject(method = "drawString(Lnet/minecraft/client/gui/Font;Lnet/minecraft/util/FormattedCharSequence;IIIZ)I", at = @At("HEAD"))
+	private void injectDrawText2(Font textRenderer, FormattedCharSequence text, int x, int y, int color, boolean shadow, CallbackInfoReturnable<Integer> cir) {
 		injectDrawText(textRenderer, () -> {
 			StringBuilder builder = new StringBuilder();
 			text.accept((index, style, codePoint) -> {
@@ -223,11 +223,11 @@ public class DrawContextMixin {
 				return true;
 			});
 			return builder.toString();
-		}, () -> textRenderer.getWidth(text),x, y, color, shadow);
+		}, () -> textRenderer.width(text),x, y, color, shadow);
 	}
 
 	@Unique
-	private void injectDrawText(TextRenderer textRenderer, Supplier<String> getText, IntSupplier getWidth, int x, int y, int color, boolean shadow) {
+	private void injectDrawText(Font textRenderer, Supplier<String> getText, IntSupplier getWidth, int x, int y, int color, boolean shadow) {
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(2);
@@ -244,7 +244,7 @@ public class DrawContextMixin {
 
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
 
-			Matrix4f matrix = ((DrawContext) (Object) this).getMatrices().peek().getPositionMatrix();
+			Matrix4f matrix = ((GuiGraphics) (Object) this).pose().last().pose();
 			Vector3f screenPos = new Vector3f(x, y, 0.0f);
 			screenPos.mulPosition(matrix);
 
@@ -273,7 +273,7 @@ public class DrawContextMixin {
 				details[j++] = "Shadow:";
 				details[j++] = "\t" + shadow;
 				details[j++] = "";
-				details[j++] = GUIInspector.getMappedClassName(TextRenderer.class) + ":";
+				details[j++] = GUIInspector.getMappedClassName(Font.class) + ":";
 				details[j++] = "\t" + GUIInspector.getMappedClassName(textRenderer) + "@" + Integer.toHexString(textRenderer.hashCode());
 				details[j] = "";
 				return details;
@@ -330,8 +330,8 @@ public class DrawContextMixin {
 	}
 
 	// source args seem to be named wrong. they say u1, v1, u2, v2, but it's actually u1, u2, v1, v2
-	@Inject(method = "drawTexturedQuad(Lnet/minecraft/util/Identifier;IIIIIFFFF)V", at = @At("HEAD"))
-	private void injectDrawTexturedQuad1(Identifier texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, CallbackInfo ci) {
+	@Inject(method = "innerBlit(Lnet/minecraft/resources/ResourceLocation;IIIIIFFFF)V", at = @At("HEAD"))
+	private void injectDrawTexturedQuad1(ResourceLocation texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
@@ -362,9 +362,9 @@ public class DrawContextMixin {
 
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
 
-			DrawContext context = ((DrawContext) (Object) this);
+			GuiGraphics context = ((GuiGraphics) (Object) this);
 
-			Matrix4f matrix = context.getMatrices().peek().getPositionMatrix();
+			Matrix4f matrix = context.pose().last().pose();
 
 			Vector3f screenPos1 = new Vector3f(x1, y1, 0.0f);
 			Vector3f screenPos2 = new Vector3f(x2, y2, 0.0f);
@@ -452,8 +452,8 @@ public class DrawContextMixin {
 	}
 
 
-	@Inject(method = "drawTexturedQuad(Lnet/minecraft/util/Identifier;IIIIIFFFFFFFF)V", at = @At("HEAD"))
-	private void injectDrawTexturedQuad2(Identifier texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, float red, float green, float blue, float alpha, CallbackInfo ci) {
+	@Inject(method = "innerBlit(Lnet/minecraft/resources/ResourceLocation;IIIIIFFFFFFFF)V", at = @At("HEAD"))
+	private void injectDrawTexturedQuad2(ResourceLocation texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, float red, float green, float blue, float alpha, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
@@ -484,9 +484,9 @@ public class DrawContextMixin {
 
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
 
-			DrawContext context = ((DrawContext) (Object) this);
+			GuiGraphics context = ((GuiGraphics) (Object) this);
 
-			Matrix4f matrix = context.getMatrices().peek().getPositionMatrix();
+			Matrix4f matrix = context.pose().last().pose();
 
 			Vector3f screenPos1 = new Vector3f(x1, y1, 0.0f);
 			Vector3f screenPos2 = new Vector3f(x2, y2, 0.0f);
@@ -578,8 +578,8 @@ public class DrawContextMixin {
 		}
 	}
 
-	@Inject(method = "drawItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/world/World;Lnet/minecraft/item/ItemStack;IIII)V", at = @At("HEAD"))
-	private void injectDrawItem(LivingEntity entity, World world, ItemStack stack, int x, int y, int seed, int z, CallbackInfo ci) {
+	@Inject(method = "renderItem(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/level/Level;Lnet/minecraft/world/item/ItemStack;IIII)V", at = @At("HEAD"))
+	private void injectDrawItem(LivingEntity entity, Level world, ItemStack stack, int x, int y, int seed, int z, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
@@ -592,7 +592,7 @@ public class DrawContextMixin {
 
 			Vector2f screenPos = new Vector2f(x, y);
 			Vector3f pos = new Vector3f(x, y, 0.0f);
-			Matrix4f matrix = ((DrawContext) (Object) this).getMatrices().peek().getPositionMatrix();
+			Matrix4f matrix = ((GuiGraphics) (Object) this).pose().last().pose();
 			pos.mulPosition(matrix);
 
 			boolean screenDifferent = Math.round(screenPos.x) != x || Math.round(screenPos.y) != y;
@@ -603,8 +603,8 @@ public class DrawContextMixin {
 				details[j++] = "Captured: " + Descriptors.getDescriptorFromFrame(frames.get(0));
 				details[j++] = "";
 				details[j++] = "Item:";
-				details[j++] = String.format("\tRaw Name: %s", stack.getItem().getName());
-				details[j++] = String.format("\tLiteral Name: %s", stack.getItem().getName().getString());
+				details[j++] = String.format("\tRaw Name: %s", stack.getItem().getDescription());
+				details[j++] = String.format("\tLiteral Name: %s", stack.getItem().getDescription().getString());
 				details[j++] = "";
 				details[j++] = "Position:";
 				details[j++] = String.format("\tDepth (z): %d", z);

@@ -1,14 +1,17 @@
 package com.arcadesmasher.guiinspector.tree;
 
-import com.arcadesmasher.guiinspector.data.FriendlyDisplay;
 import com.arcadesmasher.guiinspector.GUIInspector;
+import com.arcadesmasher.guiinspector.data.FriendlyDisplay;
 import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import javax.swing.event.TreeSelectionListener;
 import javax.swing.tree.*;
 import java.awt.*;
-import java.awt.datatransfer.*;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.StringSelection;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
 import java.util.function.Consumer;

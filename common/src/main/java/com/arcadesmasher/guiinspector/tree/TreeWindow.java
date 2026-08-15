@@ -11,7 +11,7 @@ public class TreeWindow {
 
 	private final JFrame frame;
 	private final JTabbedPane tabbedPane;
-	private final Map<String, TreePanel> tabs = new LinkedHashMap<>();
+	private final Map<String, com.arcadesmasher.guiinspector.tree.TreePanel> tabs = new LinkedHashMap<>();
 
 	private TreeWindow() {
 		tabbedPane = new JTabbedPane();
@@ -38,28 +38,28 @@ public class TreeWindow {
 		return instance;
 	}
 
-	public TreePanel addTab(String name) {
+	public com.arcadesmasher.guiinspector.tree.TreePanel addTab(String name) {
 		if (tabs.containsKey(name)) {
 			return tabs.get(name);
 		}
-		TreePanel panel = new TreePanel();
+		com.arcadesmasher.guiinspector.tree.TreePanel panel = new com.arcadesmasher.guiinspector.tree.TreePanel();
 		tabs.put(name, panel);
 		SwingUtilities.invokeLater(() -> tabbedPane.addTab(name, panel));
 		return panel;
 	}
 
-	public TreePanel getTab(String name) {
+	public com.arcadesmasher.guiinspector.tree.TreePanel getTab(String name) {
 		return tabs.get(name);
 	}
 
 	public void removeTab(String name) {
-		TreePanel panel = tabs.remove(name);
+		com.arcadesmasher.guiinspector.tree.TreePanel panel = tabs.remove(name);
 		if (panel != null) {
 			SwingUtilities.invokeLater(() -> tabbedPane.remove(panel));
 		}
 	}
 
-	public TreePanel getSelectedTab() {
+	public com.arcadesmasher.guiinspector.tree.TreePanel getSelectedTab() {
 		int idx = tabbedPane.getSelectedIndex();
 		if (idx < 0) return null;
 		return tabs.values().stream().skip(idx).findFirst().orElse(null);

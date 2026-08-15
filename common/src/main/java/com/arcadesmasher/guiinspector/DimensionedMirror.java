@@ -1,9 +1,11 @@
 package com.arcadesmasher.guiinspector;
 
+import com.arcadesmasher.guiinspector.Dim2iAccessor;
+
 public interface DimensionedMirror {
 	int getX();
 	int getY();
 	int getWidth();
 	int getHeight();
-	Dim2iAccessor getDim2i();
+	com.arcadesmasher.guiinspector.Dim2iAccessor getDim2i();
 }

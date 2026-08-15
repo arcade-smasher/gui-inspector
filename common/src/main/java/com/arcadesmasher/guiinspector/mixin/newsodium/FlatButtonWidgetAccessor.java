@@ -1,6 +1,6 @@
 package com.arcadesmasher.guiinspector.mixin.newsodium;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -23,10 +23,10 @@ public interface FlatButtonWidgetAccessor extends com.arcadesmasher.guiinspector
 	void setShouldDrawFrame(boolean drawFrame);
 
 	@Accessor("label")
-	Text acquireLabel();
+	Component acquireLabel();
 	@Mutable
 	@Accessor("label")
-	void changeLabel(Text label);
+	void changeLabel(Component label);
 
 	@Accessor("selected")
 	boolean isSelected();

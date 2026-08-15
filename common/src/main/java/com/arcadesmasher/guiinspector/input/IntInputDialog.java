@@ -5,7 +5,7 @@ import java.awt.*;
 import java.text.ParseException;
 import java.util.Optional;
 
-public class IntInputDialog extends InputDialog<Integer> {
+public class IntInputDialog extends com.arcadesmasher.guiinspector.input.InputDialog<Integer> {
 
 	private IntInputDialog(Frame parent, String title, String label, int init, int min, int max) {
 		super(parent, title);

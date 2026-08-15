@@ -4,7 +4,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 
 @Environment(EnvType.CLIENT)
-public abstract class AbstractWidget implements net.minecraft.client.gui.Drawable, net.minecraft.client.gui.Element, net.minecraft.client.gui.Selectable, net.caffeinemc.mods.sodium.client.gui.Dimensioned {
+public abstract class AbstractWidget implements net.minecraft.client.gui.components.Renderable, net.minecraft.client.gui.components.events.GuiEventListener, net.minecraft.client.gui.narration.NarratableEntry, net.caffeinemc.mods.sodium.client.gui.Dimensioned {
 
 	protected boolean hovered;
 

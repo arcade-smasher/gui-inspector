@@ -1,11 +1,14 @@
 package com.arcadesmasher.guiinspector;
 
+import com.arcadesmasher.guiinspector.Dim2iAccessor;
+import com.arcadesmasher.guiinspector.DimensionedMirror;
+import com.arcadesmasher.guiinspector.WidthHeightRegistry;
+import com.arcadesmasher.guiinspector.data.FriendlyDisplay;
+import com.arcadesmasher.guiinspector.data.nodedata.AlternatingDisplayNodeData;
+import com.arcadesmasher.guiinspector.data.nodedata.NodeData;
 import com.arcadesmasher.guiinspector.data.rowdata.DefaultRowData;
 import com.arcadesmasher.guiinspector.data.rowdata.RowData;
 import com.arcadesmasher.guiinspector.input.*;
-import com.arcadesmasher.guiinspector.data.nodedata.AlternatingDisplayNodeData;
-import com.arcadesmasher.guiinspector.data.FriendlyDisplay;
-import com.arcadesmasher.guiinspector.data.nodedata.NodeData;
 import com.arcadesmasher.guiinspector.mappings.MappingsResolver;
 import com.arcadesmasher.guiinspector.mixin.ClickableWidgetAccessor;
 import com.arcadesmasher.guiinspector.mixin.SlotAccessor;
@@ -16,28 +19,26 @@ import com.arcadesmasher.guiinspector.tree.TreeBuilder;
 import com.arcadesmasher.guiinspector.tree.TreePanel;
 import com.arcadesmasher.guiinspector.tree.TreeWindow;
 import net.fabricmc.api.ClientModInitializer;
-
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.loader.api.ModContainer;
 import net.fabricmc.loader.api.Version;
 import net.fabricmc.loader.api.VersionParsingException;
 import net.fabricmc.loader.api.metadata.version.VersionPredicate;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.Mouse;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Element;
-import net.minecraft.client.gui.ParentElement;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.screen.ingame.HandledScreen;
-import net.minecraft.client.gui.widget.ClickableWidget;
-import net.minecraft.client.gui.widget.Widget;
-import net.minecraft.item.ItemStack;
-import net.minecraft.screen.slot.Slot;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.MouseHandler;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.events.ContainerEventHandler;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.layouts.LayoutElement;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.item.ItemStack;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import javax.swing.*;
@@ -133,17 +134,17 @@ public class GUIInspector implements ClientModInitializer {
 			Object object = selectedNode.getUserObject();
 			widgets.addSideMenuEntry("Class name: " + getMappedClassName(object));
 			widgets.addSideMenuEntry("Unmapped class name: " + object.getClass());
-			if (object instanceof ParentElement parentElement) {
+			if (object instanceof ContainerEventHandler parentElement) {
 				widgets.addSideMenuEntry("Children: " + parentElement.children().size());
 			}
-			if (object instanceof Widget widget) {
+			if (object instanceof LayoutElement widget) {
 				widgets.addSideMenuEntry("");
 				widgets.addSideMenuEntry(new DefaultRowData<>(widget::getX, widget::setX, "x: ", Integer.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(widget::getY, widget::setY, "y: ", Integer.class));
-				addSideMenuWidthHeightSetterEntry(widget, WidthHeightRegistry.Enum.WIDTH);
-				addSideMenuWidthHeightSetterEntry(widget, WidthHeightRegistry.Enum.HEIGHT);
-			} else if (object instanceof DimensionedMirror dimensionedMirror) {
-				Dim2iAccessor dim2iAccessor = dimensionedMirror.getDim2i();
+				addSideMenuWidthHeightSetterEntry(widget, com.arcadesmasher.guiinspector.WidthHeightRegistry.Enum.WIDTH);
+				addSideMenuWidthHeightSetterEntry(widget, com.arcadesmasher.guiinspector.WidthHeightRegistry.Enum.HEIGHT);
+			} else if (object instanceof com.arcadesmasher.guiinspector.DimensionedMirror dimensionedMirror) {
+				com.arcadesmasher.guiinspector.Dim2iAccessor dim2iAccessor = dimensionedMirror.getDim2i();
 				widgets.addSideMenuEntry("");
 				widgets.addSideMenuEntry(new DefaultRowData<>(dimensionedMirror::getX, dim2iAccessor::setX, "x: ", Integer.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(dimensionedMirror::getY, dim2iAccessor::setY, "y: ", Integer.class));
@@ -151,30 +152,33 @@ public class GUIInspector implements ClientModInitializer {
 				widgets.addSideMenuEntry(new DefaultRowData<>(dimensionedMirror::getHeight, dim2iAccessor::setHeight, "height: ", Integer.class));
 			}
 			if (sodiumLoaded) sodiumCompat.addSodiumEntries(widgets, object);
-			if (object instanceof ClickableWidget clickableWidget) {
+			if (object instanceof AbstractWidget clickableWidget) {
 				ClickableWidgetAccessor clickableWidgetAccessor = (ClickableWidgetAccessor) clickableWidget;
 				widgets.addSideMenuEntry("");
 				widgets.addSideMenuEntry(new DefaultRowData<>(() -> clickableWidget.visible, visible -> clickableWidget.visible = visible, "Visible: ", Boolean.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(() -> clickableWidget.active, active -> clickableWidget.active = active, "Active: ", Boolean.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(clickableWidgetAccessor::acquireAlpha, clickableWidget::setAlpha, "Alpha: ", Float.class));
-				widgets.addSideMenuEntry("Selected: " + clickableWidget.isSelected());
-				VersionBridge.addSideMenuEntry_ClickableWidget_Interactable(clickableWidget);
-				widgets.addSideMenuEntry(new DefaultRowData<>(clickableWidget::getMessage, clickableWidget::setMessage, "Raw message: ", Text.class));
+				//#if _1_20_1
+				//$$ GUIInspector.widgets.addSideMenuEntry("Narratable: " + clickableWidget.isActive());
+				//#elif _1_21_11
+				GUIInspector.widgets.addSideMenuEntry("Interactable: " + clickableWidget.isActive());
+				//#endif
+				widgets.addSideMenuEntry(new DefaultRowData<>(clickableWidget::getMessage, clickableWidget::setMessage, "Raw message: ", Component.class));
 				widgets.addSideMenuEntry("Message: " + clickableWidget.getMessage().getString());
 			}
-			if (object instanceof Element element) {
+			if (object instanceof GuiEventListener element) {
 				widgets.addSideMenuEntry("");
 				widgets.addSideMenuEntry(new DefaultRowData<>(element::isFocused, element::setFocused, "Focused: ", Boolean.class));
 			}
 			if (object instanceof Slot slot) {
 				SlotAccessor slotAccessor = (SlotAccessor) slot;
 				widgets.addSideMenuEntry("");
-				widgets.addSideMenuEntry(new DefaultRowData<>(slot::getIndex, warnBreakingSetter(slotAccessor::setIndex), "index: ", Integer.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(slot::getContainerSlot, warnBreakingSetter(slotAccessor::setIndex), "index: ", Integer.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(() -> slot.x, slotAccessor::setX, "x: ", Integer.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(() -> slot.y, slotAccessor::setY, "y: ", Integer.class));
 				widgets.addSideMenuEntry("Contains: ");
-				widgets.addSideMenuEntry(new DefaultRowData<>(() -> slot.inventory.getStack(slotAccessor.getIndex()), itemStack -> slot.inventory.setStack(slotAccessor.getIndex(), itemStack), "ItemStack: ", ItemStack.class));
-				widgets.addSideMenuEntry(new DefaultRowData<>(() -> slot.inventory.getStack(slotAccessor.getIndex()).getCount(), value -> slot.inventory.getStack(slotAccessor.getIndex()).setCount(value), "Count: ", Integer.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(() -> slot.container.getItem(slotAccessor.getIndex()), itemStack -> slot.container.setItem(slotAccessor.getIndex(), itemStack), "ItemStack: ", ItemStack.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(() -> slot.container.getItem(slotAccessor.getIndex()).getCount(), value -> slot.container.getItem(slotAccessor.getIndex()).setCount(value), "Count: ", Integer.class));
 			}
 		};
 
@@ -219,7 +223,7 @@ public class GUIInspector implements ClientModInitializer {
 				Double.class, (rd, frame) -> DoubleInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Double>) rd).getter().get()),
 				Boolean.class, (rd, frame) -> BooleanInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Boolean>) rd).getter().get()),
 				String.class, (rd, frame) -> StringInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<String>) rd).getter().get()),
-				Text.class, (rd, frame) -> TextInputDialog.show(frame, "Modify Value", ((RowData<Text>) rd).getter().get()),
+				Component.class, (rd, frame) -> TextInputDialog.show(frame, "Modify Value", ((RowData<Component>) rd).getter().get()),
 				ItemStack.class, (rd, frame) -> ItemStackInputDialog.show(frame, "Modify Value", ((RowData<ItemStack>) rd).getter().get())
 		);
 
@@ -473,17 +477,17 @@ public class GUIInspector implements ClientModInitializer {
 		};
 	}
 
-	private void afterInit(MinecraftClient client, Screen screen) {
+	private void afterInit(Minecraft client, Screen screen) {
 
 		removeHook = (object) -> {
-			if (!(object instanceof Element target)) return;
+			if (!(object instanceof GuiEventListener target)) return;
 
-			Consumer<ParentElement> traverseAndRemove = new Consumer<>() {
+			Consumer<ContainerEventHandler> traverseAndRemove = new Consumer<>() {
 				@Override
-				public void accept(ParentElement parent) {
-					Iterator<? extends Element> it = parent.children().iterator();
+				public void accept(ContainerEventHandler parent) {
+					Iterator<? extends GuiEventListener> it = parent.children().iterator();
 					while (it.hasNext()) {
-						Element child = it.next();
+						GuiEventListener child = it.next();
 
 						if (child == target) {
 							try {
@@ -497,7 +501,7 @@ public class GUIInspector implements ClientModInitializer {
 								);
 								return;
 							}
-						} else if (child instanceof ParentElement pe) {
+						} else if (child instanceof ContainerEventHandler pe) {
 							accept(pe);
 						}
 					}
@@ -507,7 +511,7 @@ public class GUIInspector implements ClientModInitializer {
 			traverseAndRemove.accept(screen);
 		};
 		toggleVisibilityHook = (object) -> {
-			if (object instanceof ClickableWidget widget) widget.visible = !widget.visible;
+			if (object instanceof AbstractWidget widget) widget.visible = !widget.visible;
 		};
 
 		refreshHook = () -> {
@@ -516,10 +520,10 @@ public class GUIInspector implements ClientModInitializer {
 
 			widgets.clear();
 
-			if (client.currentScreen != screen) {
-				if (client.currentScreen == null) return;
+			if (client.screen != screen) {
+				if (client.screen == null) return;
 
-				afterInit(client, client.currentScreen);
+				afterInit(client, client.screen);
 
 				return;
 			}
@@ -527,8 +531,8 @@ public class GUIInspector implements ClientModInitializer {
 			widgets.getRootNode().setUserObject(screen);
 
 			treeWidgets(screen.children(), widgets.getRootNode());
-			if (screen instanceof HandledScreen<?> handledScreen) {
-				for (Slot slot : handledScreen.getScreenHandler().slots) {
+			if (screen instanceof AbstractContainerScreen<?> handledScreen) {
+				for (Slot slot : handledScreen.getMenu().slots) {
 					widgets.addNode(slot);
 				}
 			}
@@ -541,7 +545,7 @@ public class GUIInspector implements ClientModInitializer {
 			if (!GUIInspector.selectorMode) return;
 
 			for (Object object : GUIInspector.findAllDeepestWidgetsAt(scr.children(), mouseX, mouseY)) {
-				if (object instanceof Widget widget) {
+				if (object instanceof LayoutElement widget) {
 					GUIInspector.drawOutline(context, widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight());
 				} else if (GUIInspector.sodiumLoaded && sodiumCompat.hasDimensions(object)) {
 					int[] dimensions = sodiumCompat.getDimensions(object);
@@ -559,18 +563,18 @@ public class GUIInspector implements ClientModInitializer {
 		});
 	}
 
-	private static void addSideMenuWidthHeightSetterEntry(Widget widget, WidthHeightRegistry.Enum widthHeight) {
-		Consumer<Integer> setter = WidthHeightRegistry.getSetter(widthHeight, widget);
-		widgets.addSideMenuEntry(new DefaultRowData<>(widthHeight == WidthHeightRegistry.Enum.WIDTH ? widget::getWidth : widget::getHeight, setter, widthHeight.getValue() + ": ", Integer.class));
+	private static void addSideMenuWidthHeightSetterEntry(LayoutElement widget, com.arcadesmasher.guiinspector.WidthHeightRegistry.Enum widthHeight) {
+		Consumer<Integer> setter = com.arcadesmasher.guiinspector.WidthHeightRegistry.getSetter(widthHeight, widget);
+		widgets.addSideMenuEntry(new DefaultRowData<>(widthHeight == com.arcadesmasher.guiinspector.WidthHeightRegistry.Enum.WIDTH ? widget::getWidth : widget::getHeight, setter, widthHeight.getValue() + ": ", Integer.class));
 	}
 
 	public static List<Object> findAllDeepestWidgetsAt(List<?> widgets, double x, double y) {
 		List<Object> deepestWidgets = new ArrayList<>();
 
 		for (Object obj : widgets) {
-			if (obj instanceof Widget widget && x >= widget.getX() && x <= (widget.getX() + widget.getWidth())
+			if (obj instanceof LayoutElement widget && x >= widget.getX() && x <= (widget.getX() + widget.getWidth())
 											&&	y >= widget.getY() && y <= (widget.getY() + widget.getHeight())) {
-				if (widget instanceof ParentElement parent) {
+				if (widget instanceof ContainerEventHandler parent) {
 					// Recursively check children
 					List<Object> childrenDeepest = findAllDeepestWidgetsAt(parent.children(), x, y);
 					if (!childrenDeepest.isEmpty()) {
@@ -587,7 +591,7 @@ public class GUIInspector implements ClientModInitializer {
 				int[] dimensions = sodiumCompat.getDimensions(obj);
 				if (x >= dimensions[0] && x <= (dimensions[0] + dimensions[2])
 				&&	y >= dimensions[1] && y <= (dimensions[1] + dimensions[3])) {
-					if (obj instanceof ParentElement parent) {
+					if (obj instanceof ContainerEventHandler parent) {
 						List<Object> childrenDeepest = findAllDeepestWidgetsAt(parent.children(), x, y);
 						if (!childrenDeepest.isEmpty()) {
 							deepestWidgets.addAll(childrenDeepest);
@@ -609,7 +613,7 @@ public class GUIInspector implements ClientModInitializer {
 
 		for (Object object : objects) {
 			DefaultMutableTreeNode child = widgets.addChildNode(parent, object);
-			if (object instanceof ParentElement parentElement) {
+			if (object instanceof ContainerEventHandler parentElement) {
 				treeWidgets(parentElement.children(), child);
 			}
 		}
@@ -623,7 +627,7 @@ public class GUIInspector implements ClientModInitializer {
 
 		for (Object object : objects) {
 			System.out.println("  ".repeat(depth) + getMappedClassName(object));
-			if (object instanceof Widget widget) {
+			if (object instanceof LayoutElement widget) {
 				System.out.println("  ".repeat(depth) + "x:      " + widget.getX());
 				System.out.println("  ".repeat(depth) + "y:      " + widget.getY());
 				System.out.println("  ".repeat(depth) + "width:  " + widget.getWidth());
@@ -635,7 +639,7 @@ public class GUIInspector implements ClientModInitializer {
 				System.out.println("  ".repeat(depth) + "width: " + dimensions[2]);
 				System.out.println("  ".repeat(depth) + "height: " + dimensions[3]);
 			}
-			if (object instanceof ParentElement parentElement) {
+			if (object instanceof ContainerEventHandler parentElement) {
 				System.out.println("  ".repeat(depth) + "CHILDREN:");
 				logWidgets(parentElement.children(), depth + 1);
 			}
@@ -643,7 +647,7 @@ public class GUIInspector implements ClientModInitializer {
 		}
 	}
 
-	public static void drawOutline(DrawContext context, int x, int y, int width, int height) {
+	public static void drawOutline(GuiGraphics context, int x, int y, int width, int height) {
 
 		int red = 0xFFFF0000;
 
@@ -756,20 +760,29 @@ public class GUIInspector implements ClientModInitializer {
 	}
 
 	public static void MouseMixin_onMouseButton(Object self, long window, int button, int action, CallbackInfo ci) {
+		MouseMixin_onMouseButton(self, window, button, action, ci, true);
+	}
+
+	public static void MouseMixin_onMouseButton(Object self, long window, int button, int action, CallbackInfo ci, boolean shouldRetry) {
 
 		if (!selectorMode) return;
 		if (button != 0) return;
 		if (action != 1) return;
 
-		Mouse mouse = (Mouse) self;
+		MouseHandler mouse = (MouseHandler) self;
 
-		if (mouse.client.currentScreen == null) return;
-		if (mouse.client.getWindow().getHandle() != window) return;
+		if (mouse.minecraft.screen == null) return;
+		com.mojang.blaze3d.platform.Window mouseWindow = mouse.minecraft.getWindow();
+		//#if _1_20_1
+		//$$ if (mouseWindow.getWindow() != window) return;
+		//#elif _1_21_11
+		if (mouseWindow.handle() != window) return;
+		//#endif
 
 		activeWidgets.clear();
-		activeWidgets.ensureCapacity(mouse.client.currentScreen.children().size());
+		activeWidgets.ensureCapacity(mouse.minecraft.screen.children().size());
 
-		activeWidgets.addAll(findAllDeepestWidgetsAt(mouse.client.currentScreen.children(), mouse.getX(), mouse.getY()));
+		activeWidgets.addAll(findAllDeepestWidgetsAt(mouse.minecraft.screen.children(), mouse.xpos() * (double)mouseWindow.getGuiScaledWidth() / (double)mouseWindow.getScreenWidth(), mouse.ypos() * (double)mouseWindow.getGuiScaledHeight() / (double)mouseWindow.getScreenHeight()));
 
 		selectorMode = false;
 		System.out.println("GUI Inspector: OFF");
@@ -782,10 +795,13 @@ public class GUIInspector implements ClientModInitializer {
 			widgets.setSelectedNode(selectedWidget, success -> {
 				if (!success) {
 					refreshHook.run();
+					if (shouldRetry) {
+						MouseMixin_onMouseButton(self, window, button, action, ci, false);
+					}
 				}
 				widgets.setSelectedNode(selectedWidget, s -> {
 					if (!s) {
-						System.out.println(getMappedClassName(mouse.client.currentScreen));
+						System.out.println(getMappedClassName(mouse.minecraft.screen));
 //								logWidgets(scr.children());
 					}
 				});

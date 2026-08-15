@@ -1,10 +1,10 @@
 package com.arcadesmasher.guiinspector;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 public interface FlatButtonWidgetAccessor {
-	Text acquireLabel();
-	void changeLabel(Text label);
+	Component acquireLabel();
+	void changeLabel(Component label);
 
 	boolean isSelected();
 	void invokeSetSelected(boolean selected);

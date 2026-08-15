@@ -3,18 +3,11 @@ package com.arcadesmasher.guiinspector.mixin;
 import com.arcadesmasher.guiinspector.*;
 import com.arcadesmasher.guiinspector.data.nodedata.*;
 import com.mojang.blaze3d.opengl.GlStateManager;
+import com.mojang.blaze3d.opengl.GlTexture;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
+import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gl.GpuSampler;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.texture.GlTexture;
-import net.minecraft.client.texture.TextureSetup;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.text.OrderedText;
-import net.minecraft.world.World;
 import org.joml.Vector2f;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
@@ -25,11 +18,18 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Supplier;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.render.TextureSetup;
+import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
 
 import static org.lwjgl.opengl.GL11.*;
 import static org.lwjgl.opengl.GL11.GL_UNSIGNED_BYTE;
 
-@Mixin(DrawContext.class)
+@Mixin(GuiGraphics.class)
 public class DrawContextMixin {
 
 	@Unique
@@ -43,7 +43,7 @@ public class DrawContextMixin {
 		return flags.isEmpty() ? "None" : String.join(" | ", flags);
 	}
 
-	@Inject(method = "fill(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/texture/TextureSetup;IIIIILjava/lang/Integer;)V", at = @At("HEAD"))
+	@Inject(method = "submitColoredRectangle(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;IIIIILjava/lang/Integer;)V", at = @At("HEAD"))
 	private void injectFill(RenderPipeline pipeline, TextureSetup textureSetup, int x1, int y1, int x2, int y2, int color, Integer color2, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
@@ -73,13 +73,13 @@ public class DrawContextMixin {
 
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
 
-			DrawContext context = ((DrawContext) (Object) this);
+			GuiGraphics context = ((GuiGraphics) (Object) this);
 
 			Vector2f screenPos1 = new Vector2f(x1, y1);
 			Vector2f screenPos2 = new Vector2f(x2, y2);
 
-			context.getMatrices().transformPosition(screenPos1, screenPos1);
-			context.getMatrices().transformPosition(screenPos2, screenPos2);
+			context.pose().transformPosition(screenPos1, screenPos1);
+			context.pose().transformPosition(screenPos2, screenPos2);
 
 			boolean screenDifferent = Math.round(screenPos1.x) != x1 || Math.round(screenPos1.y) != y1 || Math.round(screenPos2.x) != x2 || Math.round(screenPos2.y) != y2;
 
@@ -160,8 +160,8 @@ public class DrawContextMixin {
 		}
 	}
 
-	@Inject(method = "drawText(Lnet/minecraft/client/font/TextRenderer;Lnet/minecraft/text/OrderedText;IIIZ)V", at = @At("HEAD"))
-	private void injectDrawText(TextRenderer textRenderer, OrderedText text, int x, int y, int color, boolean shadow, CallbackInfo ci) {
+	@Inject(method = "drawString(Lnet/minecraft/client/gui/Font;Lnet/minecraft/util/FormattedCharSequence;IIIZ)V", at = @At("HEAD"))
+	private void injectDrawText(Font textRenderer, FormattedCharSequence text, int x, int y, int color, boolean shadow, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
@@ -177,14 +177,14 @@ public class DrawContextMixin {
 			});
 			String content = builder.toString();
 
-			int width = textRenderer.getWidth(text);
+			int width = textRenderer.width(text);
 			int[] argb = GUIInspector.decodeColor(color);
 			int a = argb[0], r = argb[1], g = argb[2], b = argb[3];
 
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
 
 			Vector2f screenPos = new Vector2f(x, y);
-			((DrawContext) (Object) this).getMatrices().transformPosition(screenPos, screenPos);
+			((GuiGraphics) (Object) this).pose().transformPosition(screenPos, screenPos);
 
 			boolean screenDifferent = Math.round(screenPos.x) != x || Math.round(screenPos.y) != y;
 
@@ -211,7 +211,7 @@ public class DrawContextMixin {
 				details[j++] = "Shadow:";
 				details[j++] = "\t" + shadow;
 				details[j++] = "";
-				details[j++] = GUIInspector.getMappedClassName(TextRenderer.class) + ":";
+				details[j++] = GUIInspector.getMappedClassName(Font.class) + ":";
 				details[j++] = "\t" + GUIInspector.getMappedClassName(textRenderer) + "@" + Integer.toHexString(textRenderer.hashCode());
 				details[j] = "";
 				return details;
@@ -268,7 +268,7 @@ public class DrawContextMixin {
 	}
 
 	// source args seem to be named wrong. they say u1, v1, u2, v2, but it's actually u1, u2, v1, v2. same deal with drawTiledTexturedQuad
-	@Inject(method = "drawTexturedQuad(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lcom/mojang/blaze3d/textures/GpuTextureView;Lnet/minecraft/client/gl/GpuSampler;IIIIFFFFI)V", at = @At("HEAD"))
+	@Inject(method = "submitBlit(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lcom/mojang/blaze3d/textures/GpuTextureView;Lcom/mojang/blaze3d/textures/GpuSampler;IIIIFFFFI)V", at = @At("HEAD"))
 	private void injectDrawTexturedQuad(RenderPipeline pipeline, GpuTextureView textureView, GpuSampler sampler, int x1, int y1, int x2, int y2, float u1, float u2, float v1, float v2, int color, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
@@ -302,13 +302,13 @@ public class DrawContextMixin {
 
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
 
-			DrawContext context = ((DrawContext) (Object) this);
+			GuiGraphics context = ((GuiGraphics) (Object) this);
 
 			Vector2f screenPos1 = new Vector2f(x1, y1);
 			Vector2f screenPos2 = new Vector2f(x2, y2);
 
-			context.getMatrices().transformPosition(screenPos1, screenPos1);
-			context.getMatrices().transformPosition(screenPos2, screenPos2);
+			context.pose().transformPosition(screenPos1, screenPos1);
+			context.pose().transformPosition(screenPos2, screenPos2);
 
 			boolean screenDifferent = Math.round(screenPos1.x) != x1 || Math.round(screenPos1.y) != y1 || Math.round(screenPos2.x) != x2 || Math.round(screenPos2.y) != y2;
 
@@ -405,7 +405,7 @@ public class DrawContextMixin {
 		}
 	}
 
-	@Inject(method = "drawTiledTexturedQuad(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lcom/mojang/blaze3d/textures/GpuTextureView;Lnet/minecraft/client/gl/GpuSampler;IIIIIIFFFFI)V", at = @At("HEAD"))
+	@Inject(method = "submitTiledBlit(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lcom/mojang/blaze3d/textures/GpuTextureView;Lcom/mojang/blaze3d/textures/GpuSampler;IIIIIIFFFFI)V", at = @At("HEAD"))
 	private void injectDrawTiledTexturedQuad(RenderPipeline pipeline, GpuTextureView textureView, GpuSampler sampler, int tileWidth, int tileHeight, int x0, int y0, int x1, int y1, float u0, float u1, float v0, float v1, int color, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
@@ -439,13 +439,13 @@ public class DrawContextMixin {
 
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
 
-			DrawContext context = ((DrawContext) (Object) this);
+			GuiGraphics context = ((GuiGraphics) (Object) this);
 
 			Vector2f screenPos0 = new Vector2f(x0, y0);
 			Vector2f screenPos1 = new Vector2f(x1, y1);
 
-			context.getMatrices().transformPosition(screenPos0, screenPos0);
-			context.getMatrices().transformPosition(screenPos1, screenPos1);
+			context.pose().transformPosition(screenPos0, screenPos0);
+			context.pose().transformPosition(screenPos1, screenPos1);
 
 			boolean screenDifferent = Math.round(screenPos0.x) != x0 || Math.round(screenPos0.y) != y0 || Math.round(screenPos1.x) != x1 || Math.round(screenPos1.y) != y1;
 
@@ -542,8 +542,8 @@ public class DrawContextMixin {
 		}
 	}
 
-	@Inject(method = "drawItem(Lnet/minecraft/entity/LivingEntity;Lnet/minecraft/world/World;Lnet/minecraft/item/ItemStack;III)V", at = @At("HEAD"))
-	private void injectDrawItem(LivingEntity entity, World world, ItemStack stack, int x, int y, int seed, CallbackInfo ci) {
+	@Inject(method = "renderItem(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/level/Level;Lnet/minecraft/world/item/ItemStack;III)V", at = @At("HEAD"))
+	private void injectDrawItem(LivingEntity entity, Level world, ItemStack stack, int x, int y, int seed, CallbackInfo ci) {
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
@@ -555,7 +555,7 @@ public class DrawContextMixin {
 			DrawCallDataTreeBuilder[] nodes = new DrawCallDataTreeBuilder[frames.size()];
 
 			Vector2f screenPos = new Vector2f(x, y);
-			((DrawContext) (Object) this).getMatrices().transformPosition(screenPos, screenPos);
+			((GuiGraphics) (Object) this).pose().transformPosition(screenPos, screenPos);
 
 			boolean screenDifferent = Math.round(screenPos.x) != x || Math.round(screenPos.y) != y;
 
@@ -633,7 +633,7 @@ public class DrawContextMixin {
 	private BufferedImage getTextureSubregion(GlTexture texture, int mipLevel, float u1, float v1, float u2, float v2) {
 		int texWidth = texture.getWidth(mipLevel);
 		int texHeight = texture.getHeight(mipLevel);
-		int glId = texture.getGlId();
+		int glId = texture.glId();
 
 		float uMin = Math.min(u1, u2);
 		float uMax = Math.max(u1, u2);

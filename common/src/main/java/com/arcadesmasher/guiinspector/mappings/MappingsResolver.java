@@ -6,7 +6,7 @@ import net.fabricmc.mappingio.adapter.MappingSourceNsSwitch;
 import net.fabricmc.mappingio.format.MappingFormat;
 import net.fabricmc.mappingio.tree.MappingTree;
 import net.fabricmc.mappingio.tree.MemoryMappingTree;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -329,7 +329,7 @@ public class MappingsResolver {
 	}
 
 	private static String getMcVersion() {
-		return MinecraftClient.getInstance().getGameVersion();
+		return Minecraft.getInstance().getLaunchedVersion();
 	}
 
 	private static void checkLoaded(MappingTree tree, String name) {

@@ -1,25 +1,25 @@
 package com.arcadesmasher.guiinspector;
 
-import net.minecraft.client.gui.widget.Widget;
-
+import com.arcadesmasher.guiinspector.WidthHeightAccessor;
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+import net.minecraft.client.gui.layouts.LayoutElement;
 
 public class WidthHeightRegistry {
 
-	private static final Map<Key, BiConsumer<Widget, Integer>> CACHE = new ConcurrentHashMap<>();
+	private static final Map<Key, BiConsumer<LayoutElement, Integer>> CACHE = new ConcurrentHashMap<>();
 
-	public static Consumer<Integer> getSetter(Enum widthHeight, Widget widget) {
-		if (widget instanceof WidthHeightAccessor accessor) {
+	public static Consumer<Integer> getSetter(Enum widthHeight, LayoutElement widget) {
+		if (widget instanceof com.arcadesmasher.guiinspector.WidthHeightAccessor accessor) {
 			return widthHeight == Enum.WIDTH
 					? accessor::setWidth
 					: accessor::setHeight;
 		}
 
-		BiConsumer<Widget, Integer> setter =
+		BiConsumer<LayoutElement, Integer> setter =
 				CACHE.computeIfAbsent(
 						new Key(widget.getClass(), widthHeight),
 						WidthHeightRegistry::reflectSetter
@@ -30,7 +30,7 @@ public class WidthHeightRegistry {
 		return value -> setter.accept(widget, value);
 	}
 
-	private static BiConsumer<Widget, Integer> reflectSetter(Key key) {
+	private static BiConsumer<LayoutElement, Integer> reflectSetter(Key key) {
 		try {
 			Field field = key.clazz.getDeclaredField(key.type.getValue());
 			field.setAccessible(true);

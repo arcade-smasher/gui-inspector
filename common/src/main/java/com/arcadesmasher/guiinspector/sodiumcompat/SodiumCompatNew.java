@@ -8,9 +8,9 @@ import com.arcadesmasher.guiinspector.tree.TreePanel;
 import net.caffeinemc.mods.sodium.client.gui.Dimensioned;
 import net.caffeinemc.mods.sodium.client.gui.widgets.CenteredFlatWidget;
 import net.caffeinemc.mods.sodium.client.util.Dim2i;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
-public class SodiumCompatNew implements SodiumCompat {
+public class SodiumCompatNew implements com.arcadesmasher.guiinspector.sodiumcompat.SodiumCompat {
 
 	@Override
 	public void addSodiumEntries(TreePanel widgets, Object object) {
@@ -24,14 +24,14 @@ public class SodiumCompatNew implements SodiumCompat {
 			widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::isSelected, centeredFlatWidgetAccessor::invokeSetSelected, "Selected: ", Boolean.class));
 			widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::isSelectable, centeredFlatWidgetAccessor::setIsSelectable, "Selectable: ", Boolean.class));
 			widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::isEnabled, centeredFlatWidgetAccessor::invokeSetEnabled, "Enabled: ", Boolean.class));
-			Text label = centeredFlatWidgetAccessor.getLabel();
+			Component label = centeredFlatWidgetAccessor.getLabel();
 			if (label != null) {
-				widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::getLabel, centeredFlatWidgetAccessor::setLabel, "Raw label: ", Text.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::getLabel, centeredFlatWidgetAccessor::setLabel, "Raw label: ", Component.class));
 				widgets.addSideMenuEntry("Label: " + label.getString());
 			}
-			Text subtitle = centeredFlatWidgetAccessor.getSubtitle();
+			Component subtitle = centeredFlatWidgetAccessor.getSubtitle();
 			if (subtitle != null) {
-				widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::getSubtitle, centeredFlatWidgetAccessor::setSubtitle, "Raw subtitle: ", Text.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(centeredFlatWidgetAccessor::getSubtitle, centeredFlatWidgetAccessor::setSubtitle, "Raw subtitle: ", Component.class));
 				widgets.addSideMenuEntry("Subtitle: " + subtitle.getString());
 			}
 		}
@@ -42,9 +42,9 @@ public class SodiumCompatNew implements SodiumCompat {
 			widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::isEnabled, flatButtonWidgetAccessor::invokeSetEnabled, "Enabled: ", Boolean.class));
 			widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::shouldDrawBackground, flatButtonWidgetAccessor::setShouldDrawBackground, "Draw background: ", Boolean.class));
 			widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::shouldDrawFrame, flatButtonWidgetAccessor::setShouldDrawFrame, "Draw frame: ", Boolean.class));
-			Text label = flatButtonWidgetAccessor.acquireLabel();
+			Component label = flatButtonWidgetAccessor.acquireLabel();
 			if (label != null) {
-				widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::acquireLabel, flatButtonWidgetAccessor::changeLabel, "Raw label: ", Text.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::acquireLabel, flatButtonWidgetAccessor::changeLabel, "Raw label: ", Component.class));
 				widgets.addSideMenuEntry("Label: " + label.getString());
 			}
 		}

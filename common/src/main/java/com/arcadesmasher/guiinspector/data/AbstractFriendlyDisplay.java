@@ -1,6 +1,6 @@
 package com.arcadesmasher.guiinspector.data;
 
-public class AbstractFriendlyDisplay implements FriendlyDisplay {
+public class AbstractFriendlyDisplay implements com.arcadesmasher.guiinspector.data.FriendlyDisplay {
 
 	private final String display;
 

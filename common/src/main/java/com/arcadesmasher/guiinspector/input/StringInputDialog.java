@@ -4,7 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.Optional;
 
-public class StringInputDialog extends InputDialog<String> {
+public class StringInputDialog extends com.arcadesmasher.guiinspector.input.InputDialog<String> {
 
 	private StringInputDialog(Frame parent, String title, String label, String init) {
 		super(parent, title);

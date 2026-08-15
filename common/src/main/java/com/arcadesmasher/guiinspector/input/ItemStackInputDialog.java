@@ -1,9 +1,14 @@
 package com.arcadesmasher.guiinspector.input;
 
-import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
+import net.minecraft.core.registries.BuiltInRegistries;
+
+//#if _1_20_1
+//$$ import net.minecraft.resources.ResourceLocation;
+//#elif _1_21_11
+import net.minecraft.resources.Identifier;
+//#endif
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 
 import javax.swing.*;
 import java.awt.*;
@@ -15,9 +20,14 @@ public class ItemStackInputDialog extends InputDialog<ItemStack> {
 	private ItemStackInputDialog(Frame parent, String title, ItemStack init) {
 		super(parent, title);
 
-		JComboBox<String> comboBox = new JComboBox<>(Registries.ITEM.getIds().stream().map(Identifier::toString).toArray(String[]::new));
+		//#if _1_20_1
+		//$$ JComboBox<String> comboBox = new JComboBox<>(BuiltInRegistries.ITEM.keySet().stream().map(ResourceLocation::toString).toArray(String[]::new));
+		//#elif _1_21_11
+		JComboBox<String> comboBox = new JComboBox<>(BuiltInRegistries.ITEM.keySet().stream().map(Identifier::toString).toArray(String[]::new));
+		//#endif
+
 		comboBox.setEditable(true);
-		comboBox.setSelectedItem(Registries.ITEM.getId(init.getItem()).toString());
+		comboBox.setSelectedItem(BuiltInRegistries.ITEM.getKey(init.getItem()).toString());
 
 		add(new JLabel("Enter count: "));
 		SpinnerNumberModel model = new SpinnerNumberModel(init.getCount(), Integer.MIN_VALUE, Integer.MAX_VALUE, 1);
@@ -38,8 +48,13 @@ public class ItemStackInputDialog extends InputDialog<ItemStack> {
 			Object selected = comboBox.getSelectedItem();
 			if (selected instanceof String str) {
 				try {
-					Identifier id = Identifier.splitOn(str, ':'); // Identifier.of(str)
-					result = Registries.ITEM.get(id).getDefaultStack();
+					//#if _1_20_1
+					//$$ ResourceLocation id = ResourceLocation.of(str, ':');
+					//$$ result = BuiltInRegistries.ITEM.get(id).getDefaultInstance();
+					//#elif _1_21_11
+					Identifier id = Identifier.bySeparator(str, ':');
+					result = BuiltInRegistries.ITEM.getValue(id).getDefaultInstance();
+					//#endif
 					result.setCount((Integer) spinner.getValue());
 				} catch (Exception ex) {
 					Toolkit.getDefaultToolkit().beep();
@@ -56,6 +71,6 @@ public class ItemStackInputDialog extends InputDialog<ItemStack> {
 	}
 
 	public static Optional<ItemStack> show(Frame parent, String title) {
-		return show(parent, title, Items.AIR.getDefaultStack());
+		return show(parent, title, Items.AIR.getDefaultInstance());
 	}
 }

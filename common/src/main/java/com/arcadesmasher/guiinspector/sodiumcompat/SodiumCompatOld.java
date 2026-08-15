@@ -8,9 +8,9 @@ import com.arcadesmasher.guiinspector.tree.TreePanel;
 import me.jellysquid.mods.sodium.client.gui.options.control.ControlElement;
 import me.jellysquid.mods.sodium.client.gui.widgets.FlatButtonWidget;
 import me.jellysquid.mods.sodium.client.util.Dim2i;
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
-public class SodiumCompatOld implements SodiumCompat {
+public class SodiumCompatOld implements com.arcadesmasher.guiinspector.sodiumcompat.SodiumCompat {
 
 	@Override
 	public void addSodiumEntries(TreePanel widgets, Object object) {
@@ -32,9 +32,9 @@ public class SodiumCompatOld implements SodiumCompat {
 			widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::getVisible, flatButtonWidgetAccessor::invokeSetVisible, "Visible: ", Boolean.class));
 			widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::isSelected, flatButtonWidgetAccessor::invokeSetSelected, "Selected: ", Boolean.class));
 			widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::isEnabled, flatButtonWidgetAccessor::invokeSetEnabled, "Enabled: ", Boolean.class));
-			Text label = flatButtonWidgetAccessor.acquireLabel();
+			Component label = flatButtonWidgetAccessor.acquireLabel();
 			if (label != null) {
-				widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::acquireLabel, flatButtonWidgetAccessor::changeLabel, "Raw label: ", Text.class));
+				widgets.addSideMenuEntry(new DefaultRowData<>(flatButtonWidgetAccessor::acquireLabel, flatButtonWidgetAccessor::changeLabel, "Raw label: ", Component.class));
 				widgets.addSideMenuEntry("Label: " + label.getString());
 			}
 		}

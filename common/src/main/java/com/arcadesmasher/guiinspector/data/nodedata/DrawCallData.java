@@ -1,8 +1,8 @@
 package com.arcadesmasher.guiinspector.data.nodedata;
 
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.GuiGraphics;
 
-public interface DrawCallData extends NodeData {
+public interface DrawCallData extends com.arcadesmasher.guiinspector.data.nodedata.NodeData {
 
-	void drawOutline(DrawContext context);
+	void drawOutline(GuiGraphics context);
 }

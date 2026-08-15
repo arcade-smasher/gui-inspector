@@ -1,9 +1,9 @@
 package com.arcadesmasher.guiinspector.data.nodedata;
 
 import com.arcadesmasher.guiinspector.GUIInspector;
-import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.GuiGraphics;
 
-public final class DrawItemData extends AlternatingDisplayNodeData implements DrawCallData {
+public final class DrawItemData extends com.arcadesmasher.guiinspector.data.nodedata.AlternatingDisplayNodeData implements com.arcadesmasher.guiinspector.data.nodedata.DrawCallData {
 	private final int x;
 	private final int y;
 
@@ -14,7 +14,7 @@ public final class DrawItemData extends AlternatingDisplayNodeData implements Dr
 	}
 
 	@Override
-	public void drawOutline(DrawContext context) {
+	public void drawOutline(GuiGraphics context) {
 		GUIInspector.drawOutline(context, this.x, this.y, 16, 16);
 	}
 

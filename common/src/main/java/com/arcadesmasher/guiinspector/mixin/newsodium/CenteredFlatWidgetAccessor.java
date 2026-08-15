@@ -1,6 +1,6 @@
 package com.arcadesmasher.guiinspector.mixin.newsodium;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Pseudo;
@@ -32,14 +32,14 @@ public interface CenteredFlatWidgetAccessor {
 	void invokeSetVisible(boolean visible);
 
 	@Accessor("label")
-	Text getLabel();
+	Component getLabel();
 	@Mutable
 	@Accessor("label")
-	void setLabel(Text label);
+	void setLabel(Component label);
 
 	@Accessor("subtitle")
-	Text getSubtitle();
+	Component getSubtitle();
 	@Mutable
 	@Accessor("subtitle")
-	void setSubtitle(Text subtitle);
+	void setSubtitle(Component subtitle);
 }

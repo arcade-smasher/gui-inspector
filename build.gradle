@@ -19,6 +19,88 @@ subprojects {
 		archivesName = "${project.archives_base_name}-${project.mod_version}+mc${project.minecraft_version}"
 	}
 
+	// preprocessor is very messy, should probably use a preexisting one but whatever
+	// make SURE you comment non-1.21.11 code (and ONLY non-1.21.11) in an //#if block with //$$
+
+	def preprocessedDir = layout.buildDirectory.dir("preprocessed/java")
+
+	def preprocessCommonSources = tasks.register("preprocessCommonSources") {
+		def srcDir = rootProject.file('common/src/main/java')
+		def outDir = preprocessedDir.get().asFile
+
+		def preprocessVars = { ->
+			def autoVars = rootProject.subprojects.collectEntries { sub ->
+				def key = sub.name.replaceAll('[^a-zA-Z0-9_]', '_')
+				if (key ==~ /^[0-9].*/) key = '_' + key
+				[(key): (sub.name == project.name)]
+			}
+			def userVars = project.hasProperty('preprocessVars') ? project.preprocessVars : [:]
+			autoVars + userVars
+		}
+
+		inputs.dir(srcDir)
+		inputs.property('preprocessVars') { preprocessVars().toString() }
+		outputs.dir(outDir)
+
+		doLast {
+			def vars = preprocessVars()
+
+			outDir.deleteDir()
+			outDir.mkdirs()
+
+			def binding = new Binding()
+			vars.each { k, v -> binding.setVariable(k, v) }
+			def shell = new GroovyShell(binding)
+
+			fileTree(srcDir).visit { fte ->
+				if (fte.directory) return
+				def targetFile = new File(outDir, fte.relativePath.pathString)
+				targetFile.parentFile.mkdirs()
+
+				def output = new StringBuilder()
+				def stack = [true]
+				def matchedStack = [true]
+
+				fte.file.eachLine { line ->
+					def trimmed = line.trim()
+					if (trimmed.startsWith('//#if ')) {
+						def expr = trimmed.substring(6).trim()
+						boolean result = stack.last() && (shell.evaluate(expr) as boolean)
+						stack.push(result)
+						matchedStack.push(result)
+					} else if (trimmed.startsWith('//#elif ')) {
+						def expr = trimmed.substring(8).trim()
+						stack.pop()
+						boolean parentActive = stack.first()
+						boolean alreadyMatched = matchedStack.pop()
+						boolean result = parentActive && !alreadyMatched && (shell.evaluate(expr) as boolean)
+						stack.push(result)
+						matchedStack.push(alreadyMatched || result)
+					} else if (trimmed == '//#else') {
+						stack.pop()
+						boolean parentActive = stack.first()
+						boolean alreadyMatched = matchedStack.pop()
+						boolean result = parentActive && !alreadyMatched
+						stack.push(result)
+						matchedStack.push(alreadyMatched || result)
+					} else if (trimmed == '//#endif') {
+						stack.pop()
+						matchedStack.pop()
+					} else if (stack.first()) {
+						if (trimmed.startsWith('//$$')) {
+							def uncommented = line.replaceFirst(/\/\/\$\$/, '')
+							output.append(uncommented).append('\n')
+						} else {
+							output.append(line).append('\n')
+						}
+					}
+				}
+
+				targetFile.text = output.toString()
+			}
+		}
+	}
+
 	sourceSets {
 		stub {
 			java {
@@ -27,14 +109,21 @@ subprojects {
 		}
 		main {
 			compileClasspath += sourceSets.stub.output
-			// include common sources directly
 			java {
-				srcDir rootProject.file('common/src/main/java')
+				if (project.name == '1.21.11') {
+					srcDir rootProject.file('common/src/main/java')
+				} else {
+					srcDir preprocessedDir
+				}
 			}
 			resources {
 				srcDir rootProject.file('common/src/main/resources')
 			}
 		}
+	}
+
+	tasks.matching { it.name == 'sourcesJar' || it.name == 'compileJava' }.configureEach {
+		dependsOn preprocessCommonSources
 	}
 
 	afterEvaluate {
@@ -51,7 +140,7 @@ subprojects {
 
 	dependencies {
 		minecraft "com.mojang:minecraft:${project.minecraft_version}"
-		mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+		mappings loom.officialMojangMappings()
 		modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
 
 		implementation "net.fabricmc:mapping-io:0.6.1"

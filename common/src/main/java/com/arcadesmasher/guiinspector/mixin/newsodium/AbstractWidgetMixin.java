@@ -15,5 +15,5 @@ public abstract class AbstractWidgetMixin implements DimensionedMirror {
 	public int guiinspector$getY() { return ((Dimensioned) this).getDimensions().y(); }
 	public int guiinspector$getWidth() { return ((Dimensioned) this).getDimensions().width(); }
 	public int guiinspector$getHeight() { return ((Dimensioned) this).getDimensions().height(); }
-	public com.arcadesmasher.guiinspector.Dim2iAccessor guiinspector$getDim2i() { return (Dim2iAccessor) (Object) ((Dimensioned) this).getDimensions(); }
+	public com.arcadesmasher.guiinspector.Dim2iAccessor guiinspector$getDim2i() { return (com.arcadesmasher.guiinspector.mixin.newsodium.Dim2iAccessor) (Object) ((Dimensioned) this).getDimensions(); }
 }

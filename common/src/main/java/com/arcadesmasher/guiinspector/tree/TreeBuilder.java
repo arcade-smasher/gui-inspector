@@ -3,7 +3,9 @@ package com.arcadesmasher.guiinspector.tree;
 import com.arcadesmasher.guiinspector.data.nodedata.DrawCallDataTreeBuilder;
 
 import javax.swing.tree.DefaultMutableTreeNode;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
 
 public class TreeBuilder {
 	private final List<DrawCallDataTreeBuilder[]> chains = new ArrayList<>();
@@ -27,7 +29,7 @@ public class TreeBuilder {
 		}
 	}
 
-	public void buildTree(TreePanel panel) {
+	public void buildTree(com.arcadesmasher.guiinspector.tree.TreePanel panel) {
 		MergeNode root = new MergeNode(null, null);
 
 		for (DrawCallDataTreeBuilder[] chain : chains) {
@@ -52,7 +54,7 @@ public class TreeBuilder {
 		}
 	}
 
-	private void createNodesRecursively(TreePanel panel, DefaultMutableTreeNode parentNode, MergeNode node) {
+	private void createNodesRecursively(com.arcadesmasher.guiinspector.tree.TreePanel panel, DefaultMutableTreeNode parentNode, MergeNode node) {
 		DefaultMutableTreeNode created = panel.addChildNode(parentNode, node.userObject);
 
 		for (Object leafObj : node.leaves) {
@@ -64,7 +66,7 @@ public class TreeBuilder {
 		}
 	}
 
-	public void buildFlatTree(TreePanel panel) {
+	public void buildFlatTree(com.arcadesmasher.guiinspector.tree.TreePanel panel) {
 		chains.forEach(chain -> {
 			DefaultMutableTreeNode parentNode = panel.getRootNode();
 			for (DrawCallDataTreeBuilder frame : chain) {

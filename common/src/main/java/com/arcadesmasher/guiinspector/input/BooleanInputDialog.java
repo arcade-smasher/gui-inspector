@@ -4,7 +4,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.Optional;
 
-public class BooleanInputDialog extends InputDialog<Boolean> {
+public class BooleanInputDialog extends com.arcadesmasher.guiinspector.input.InputDialog<Boolean> {
 
 	private BooleanInputDialog(Frame parent, String title, String label, boolean init) {
 		super(parent, title);

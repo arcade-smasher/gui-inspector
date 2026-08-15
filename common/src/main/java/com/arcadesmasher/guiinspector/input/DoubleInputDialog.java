@@ -5,7 +5,7 @@ import java.awt.*;
 import java.text.ParseException;
 import java.util.Optional;
 
-public class DoubleInputDialog extends InputDialog<Double> {
+public class DoubleInputDialog extends com.arcadesmasher.guiinspector.input.InputDialog<Double> {
 
 	private DoubleInputDialog(Frame parent, String title, String label, double init, double min, double max) {
 		super(parent, title);

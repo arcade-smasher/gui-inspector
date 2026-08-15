@@ -1,6 +1,6 @@
 package com.arcadesmasher.guiinspector.mixin;
 
-import net.minecraft.screen.slot.Slot;
+import net.minecraft.world.inventory.Slot;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.gen.Accessor;
@@ -15,9 +15,9 @@ public interface SlotAccessor {
 	@Accessor("y")
 	void setY(int y);
 
-	@Accessor("index")
+	@Accessor("slot")
 	int getIndex();
 	@Mutable
-	@Accessor("index")
+	@Accessor("slot")
 	void setIndex(int index);
 }

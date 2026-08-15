@@ -1,5 +1,7 @@
 package com.arcadesmasher.guiinspector;
 
+import com.arcadesmasher.guiinspector.GUIInspector;
+
 import java.util.List;
 import java.util.Map;
 
@@ -55,10 +57,10 @@ public class Descriptors {
 
 	public static String getDescriptorFromFrame(StackWalker.StackFrame frame) {
 		return Descriptors.fullMethodDescriptor(
-				GUIInspector.getMappedClassName(frame.getDeclaringClass()),
-				GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()),
-				GUIInspector.getMappedClassName(frame.getMethodType().returnType()),
-				frame.getMethodType().parameterList().stream().map(GUIInspector::getMappedClassName).toList()
+				com.arcadesmasher.guiinspector.GUIInspector.getMappedClassName(frame.getDeclaringClass()),
+				com.arcadesmasher.guiinspector.GUIInspector.getMappedMethodName(frame.getDeclaringClass(), frame.getMethodName()),
+				com.arcadesmasher.guiinspector.GUIInspector.getMappedClassName(frame.getMethodType().returnType()),
+				frame.getMethodType().parameterList().stream().map(com.arcadesmasher.guiinspector.GUIInspector::getMappedClassName).toList()
 		);
 	}
 }

@@ -1,6 +1,6 @@
 package net.caffeinemc.mods.sodium.client.gui.widgets;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 public abstract class CenteredFlatWidget extends AbstractWidget {
 
@@ -10,8 +10,8 @@ public abstract class CenteredFlatWidget extends AbstractWidget {
 	private boolean enabled;
 	private boolean visible;
 
-	private Text label; // not final, same deal
-	private Text subtitle; // not final, same deal
+	private Component label; // not final, same deal
+	private Component subtitle; // not final, same deal
 
 	public abstract void setSelected(boolean selected); // not abstract normally, it's fine.
 	public abstract void setEnabled(boolean enabled); // same deal
