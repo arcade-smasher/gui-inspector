@@ -2,8 +2,8 @@ package com.arcadesmasher.guiinspector.sodiumcompat;
 
 import com.arcadesmasher.guiinspector.AbstractWidgetAccessor;
 import com.arcadesmasher.guiinspector.data.rowdata.DefaultRowData;
-import com.arcadesmasher.guiinspector.mixin.newsodium.CenteredFlatWidgetAccessor;
-import com.arcadesmasher.guiinspector.mixin.newsodium.FlatButtonWidgetAccessor;
+import com.arcadesmasher.guiinspector.mixin.sodium.CenteredFlatWidgetAccessor;
+import com.arcadesmasher.guiinspector.mixin.sodium.FlatButtonWidgetAccessor;
 import com.arcadesmasher.guiinspector.tree.TreePanel;
 import net.caffeinemc.mods.sodium.client.gui.Dimensioned;
 import net.caffeinemc.mods.sodium.client.gui.widgets.CenteredFlatWidget;

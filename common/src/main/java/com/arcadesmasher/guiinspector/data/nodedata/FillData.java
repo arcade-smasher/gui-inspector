@@ -1,7 +1,7 @@
 package com.arcadesmasher.guiinspector.data.nodedata;
 
 import com.arcadesmasher.guiinspector.GUIInspector;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 public final class FillData extends com.arcadesmasher.guiinspector.data.nodedata.AlternatingDisplayNodeData implements com.arcadesmasher.guiinspector.data.nodedata.DrawCallData {
 	private final int x1;
@@ -9,8 +9,8 @@ public final class FillData extends com.arcadesmasher.guiinspector.data.nodedata
 	private final int x2;
 	private final int y2;
 
-	public FillData(String yarnLabel, String yarnSimpleLabel, String mojmapLabel, String mojmapSimpleLabel, Object[] yarnDetails, Object[] mojmapDetails, int x1, int y1, int x2, int y2) {
-		super(yarnLabel, yarnSimpleLabel, mojmapLabel, mojmapSimpleLabel, yarnDetails, mojmapDetails);
+	public FillData(String label, String simpleLabel, Object[] details, int x1, int y1, int x2, int y2) {
+		super(label, simpleLabel, details);
 		this.x1 = x1;
 		this.y1 = y1;
 		this.x2 = x2;
@@ -18,7 +18,7 @@ public final class FillData extends com.arcadesmasher.guiinspector.data.nodedata
 	}
 
 	@Override
-	public void drawOutline(GuiGraphics context) {
+	public void drawOutline(GuiGraphicsExtractor context) {
 		GUIInspector.drawOutline(context, this.x1, this.y1, this.x2 - this.x1, this.y2 - this.y1);
 	}
 

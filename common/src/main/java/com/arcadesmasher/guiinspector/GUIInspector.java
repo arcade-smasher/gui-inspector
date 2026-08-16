@@ -9,25 +9,18 @@ import com.arcadesmasher.guiinspector.data.nodedata.NodeData;
 import com.arcadesmasher.guiinspector.data.rowdata.DefaultRowData;
 import com.arcadesmasher.guiinspector.data.rowdata.RowData;
 import com.arcadesmasher.guiinspector.input.*;
-import com.arcadesmasher.guiinspector.mappings.MappingsResolver;
-import com.arcadesmasher.guiinspector.mixin.ClickableWidgetAccessor;
 import com.arcadesmasher.guiinspector.mixin.SlotAccessor;
 import com.arcadesmasher.guiinspector.sodiumcompat.SodiumCompat;
 import com.arcadesmasher.guiinspector.sodiumcompat.SodiumCompatNew;
-import com.arcadesmasher.guiinspector.sodiumcompat.SodiumCompatOld;
 import com.arcadesmasher.guiinspector.tree.TreeBuilder;
 import com.arcadesmasher.guiinspector.tree.TreePanel;
 import com.arcadesmasher.guiinspector.tree.TreeWindow;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.loader.api.FabricLoader;
-import net.fabricmc.loader.api.ModContainer;
-import net.fabricmc.loader.api.Version;
-import net.fabricmc.loader.api.VersionParsingException;
-import net.fabricmc.loader.api.metadata.version.VersionPredicate;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.MouseHandler;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.events.ContainerEventHandler;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -73,7 +66,6 @@ public class GUIInspector implements ClientModInitializer {
 	public static boolean pendingCapture = false;
 
 	public static boolean sodiumLoaded;
-	public static boolean sodiumNew;
 	public static SodiumCompat sodiumCompat;
 
 	private static Consumer<TreeSelectionEvent> selectionListener;
@@ -82,36 +74,12 @@ public class GUIInspector implements ClientModInitializer {
 	public static Consumer<Object> removeHook;
 	public static Consumer<Object> toggleVisibilityHook;
 
-	public static MappingsResolver mappingsResolver = new MappingsResolver();
-	public static boolean usingYarnMappings = true;
-	private final Object mappingLock = new Object();
-
 	@Override
 	public void onInitializeClient() {
 
-		try {
-			mappingsResolver.loadYarn();
-		} catch (MappingsResolver.MappingsException e) {
-			throw new RuntimeException(e);
-		}
-
 		sodiumLoaded = FabricLoader.getInstance().isModLoaded("sodium");
 		if (sodiumLoaded) {
-			Optional<ModContainer> container = FabricLoader.getInstance().getModContainer("sodium");
-			if (container.isPresent()) {
-				Version version = container.get().getMetadata().getVersion();
-
-				VersionPredicate predicate;
-				try {
-					predicate = VersionPredicate.parse(">=0.6.0");
-				} catch (VersionParsingException e) {
-					throw new RuntimeException(e);
-				}
-
-				sodiumNew = predicate.test(version);
-				if (sodiumNew) sodiumCompat = new SodiumCompatNew();
-				else sodiumCompat = new SodiumCompatOld();
-			}
+			sodiumCompat = new SodiumCompatNew();
 		}
 
 		System.setProperty("java.awt.headless", "false");
@@ -133,7 +101,6 @@ public class GUIInspector implements ClientModInitializer {
 			if (selectedNode == null) return;
 			Object object = selectedNode.getUserObject();
 			widgets.addSideMenuEntry("Class name: " + getMappedClassName(object));
-			widgets.addSideMenuEntry("Unmapped class name: " + object.getClass());
 			if (object instanceof ContainerEventHandler parentElement) {
 				widgets.addSideMenuEntry("Children: " + parentElement.children().size());
 			}
@@ -141,8 +108,12 @@ public class GUIInspector implements ClientModInitializer {
 				widgets.addSideMenuEntry("");
 				widgets.addSideMenuEntry(new DefaultRowData<>(widget::getX, widget::setX, "x: ", Integer.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(widget::getY, widget::setY, "y: ", Integer.class));
-				addSideMenuWidthHeightSetterEntry(widget, com.arcadesmasher.guiinspector.WidthHeightRegistry.Enum.WIDTH);
-				addSideMenuWidthHeightSetterEntry(widget, com.arcadesmasher.guiinspector.WidthHeightRegistry.Enum.HEIGHT);
+				if (object instanceof AbstractWidget abstractWidget) {
+					widgets.addSideMenuEntry(new DefaultRowData<>(abstractWidget::getWidth, abstractWidget::setWidth, "width: ", Integer.class));
+					widgets.addSideMenuEntry(new DefaultRowData<>(abstractWidget::getHeight, abstractWidget::setHeight, "height: ", Integer.class));
+				}
+//				addSideMenuWidthHeightSetterEntry(widget, com.arcadesmasher.guiinspector.WidthHeightRegistry.Enum.WIDTH);
+//				addSideMenuWidthHeightSetterEntry(widget, com.arcadesmasher.guiinspector.WidthHeightRegistry.Enum.HEIGHT);
 			} else if (object instanceof com.arcadesmasher.guiinspector.DimensionedMirror dimensionedMirror) {
 				com.arcadesmasher.guiinspector.Dim2iAccessor dim2iAccessor = dimensionedMirror.getDim2i();
 				widgets.addSideMenuEntry("");
@@ -153,16 +124,11 @@ public class GUIInspector implements ClientModInitializer {
 			}
 			if (sodiumLoaded) sodiumCompat.addSodiumEntries(widgets, object);
 			if (object instanceof AbstractWidget clickableWidget) {
-				ClickableWidgetAccessor clickableWidgetAccessor = (ClickableWidgetAccessor) clickableWidget;
 				widgets.addSideMenuEntry("");
 				widgets.addSideMenuEntry(new DefaultRowData<>(() -> clickableWidget.visible, visible -> clickableWidget.visible = visible, "Visible: ", Boolean.class));
 				widgets.addSideMenuEntry(new DefaultRowData<>(() -> clickableWidget.active, active -> clickableWidget.active = active, "Active: ", Boolean.class));
-				widgets.addSideMenuEntry(new DefaultRowData<>(clickableWidgetAccessor::acquireAlpha, clickableWidget::setAlpha, "Alpha: ", Float.class));
-				//#if _1_20_1
-				//$$ GUIInspector.widgets.addSideMenuEntry("Narratable: " + clickableWidget.isActive());
-				//#elif _1_21_11
+				widgets.addSideMenuEntry(new DefaultRowData<>(clickableWidget::getAlpha, clickableWidget::setAlpha, "Alpha: ", Float.class));
 				GUIInspector.widgets.addSideMenuEntry("Interactable: " + clickableWidget.isActive());
-				//#endif
 				widgets.addSideMenuEntry(new DefaultRowData<>(clickableWidget::getMessage, clickableWidget::setMessage, "Raw message: ", Component.class));
 				widgets.addSideMenuEntry("Message: " + clickableWidget.getMessage().getString());
 			}
@@ -357,66 +323,8 @@ public class GUIInspector implements ClientModInitializer {
 			drawCalls.hideSideMenu();
 			drawCalls.clear();
 		});
-		var ref = new Object() {
-			JButton switchBtnWidgets = null;
-			JButton switchBtnDrawCalls = null;
-		};
-
-		ActionListener switchBtnActionListener = e -> {
-			usingYarnMappings = !usingYarnMappings;
-			updateMappingButtons(ref.switchBtnWidgets, ref.switchBtnDrawCalls);
-			treeWindow.getSelectedTab().getTreeModel().reload();
-		};
-		ref.switchBtnWidgets = createMappingToggleButton(switchBtnActionListener);
-		ref.switchBtnDrawCalls = createMappingToggleButton(switchBtnActionListener);
-		widgets.getToolbar().add(ref.switchBtnWidgets);
-		drawCalls.getToolbar().add(ref.switchBtnDrawCalls);
 
 		treeWindow.show();
-
-
-		JDialog loadingDialog = new JDialog(treeWindow.getFrame(), "Loading mappings", Dialog.ModalityType.APPLICATION_MODAL);
-		loadingDialog.setDefaultCloseOperation(JDialog.DO_NOTHING_ON_CLOSE);
-
-		JLabel label = new JLabel("Loading mappings, please wait...");
-		label.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
-
-		loadingDialog.getContentPane().add(label);
-		loadingDialog.pack();
-		loadingDialog.setLocationRelativeTo(treeWindow.getFrame());
-
-		SwingWorker<Void, Void> worker = new SwingWorker<>() {
-			@Override
-			protected Void doInBackground() {
-				synchronized (mappingLock) {
-					try {
-						mappingsResolver.loadMojMap();
-					} catch (MappingsResolver.MappingsException ex) {
-						throw new RuntimeException(ex);
-					}
-				}
-				return null;
-			}
-
-			@Override
-			protected void done() {
-				loadingDialog.dispose();
-				updateMappingButtons(ref.switchBtnWidgets, ref.switchBtnDrawCalls);
-
-				try {
-					get();
-				} catch (Exception ex) {
-					JOptionPane.showMessageDialog(treeWindow.getFrame(),
-							"Failed to load MojMap: " + ex.getMessage(),
-							"Error",
-							JOptionPane.ERROR_MESSAGE);
-				}
-				treeWindow.getSelectedTab().getTreeModel().reload();
-			}
-		};
-
-		worker.execute();
-		loadingDialog.setVisible(true);
 
 		// maybe add some sort of key combo for inspector mode later?
 //		ClientTickEvents.END_CLIENT_TICK.register(client -> {
@@ -429,40 +337,16 @@ public class GUIInspector implements ClientModInitializer {
 		ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> afterInit(client, screen));
 	}
 
-	private JButton createMappingToggleButton(ActionListener actionListener) {
-		JButton btn = new JButton("Switch to MojMap");
-
-		btn.addActionListener(actionListener);
-
-		return btn;
-	}
-
-	private void updateMappingButtons(JButton b1, JButton b2) {
-		b1.setText(usingYarnMappings
-				? "Switch to MojMap"
-				: "Switch to Yarn");
-		b2.setText(usingYarnMappings
-				? "Switch to MojMap"
-				: "Switch to Yarn");
-	}
-
 	public static String getMappedClassName(Object object) {
 		return getMappedClassName(object.getClass());
 	}
 
 	public static String getMappedClassName(Class<?> clazz) {
-		String name = clazz.getName();
-		String mappedName = usingYarnMappings ?
-				mappingsResolver.getYarnClassName(name) :
-				mappingsResolver.getMojMapClassName(name);
-		return mappedName == null ? name : mappedName;
+		return clazz.getName();
 	}
 
 	public static String getMappedMethodName(Class<?> clazz, String methodName) {
-		String mappedName = usingYarnMappings ?
-				mappingsResolver.getYarnMethodName(clazz, methodName) :
-				mappingsResolver.getMojMapMethodName(clazz, methodName);
-		return mappedName == null ? methodName : mappedName;
+		return methodName;
 	}
 
 	private <T> Consumer<T> warnBreakingSetter(Consumer<T> setter) {
@@ -520,10 +404,10 @@ public class GUIInspector implements ClientModInitializer {
 
 			widgets.clear();
 
-			if (client.screen != screen) {
-				if (client.screen == null) return;
+			if (getScreen(client) != screen) {
+				if (getScreen(client) == null) return;
 
-				afterInit(client, client.screen);
+				afterInit(client, getScreen(client));
 
 				return;
 			}
@@ -540,7 +424,7 @@ public class GUIInspector implements ClientModInitializer {
 
 		refreshHook.run();
 
-		ScreenEvents.afterRender(screen).register((scr, context, mouseX, mouseY, tickDelta) -> {
+		ScreenEvents.afterExtract(screen).register((scr, context, mouseX, mouseY, tickDelta) -> {
 
 			if (!GUIInspector.selectorMode) return;
 
@@ -647,7 +531,7 @@ public class GUIInspector implements ClientModInitializer {
 		}
 	}
 
-	public static void drawOutline(GuiGraphics context, int x, int y, int width, int height) {
+	public static void drawOutline(GuiGraphicsExtractor context, int x, int y, int width, int height) {
 
 		int red = 0xFFFF0000;
 
@@ -771,18 +655,14 @@ public class GUIInspector implements ClientModInitializer {
 
 		MouseHandler mouse = (MouseHandler) self;
 
-		if (mouse.minecraft.screen == null) return;
+		if (getScreen(mouse.minecraft) == null) return;
 		com.mojang.blaze3d.platform.Window mouseWindow = mouse.minecraft.getWindow();
-		//#if _1_20_1
-		//$$ if (mouseWindow.getWindow() != window) return;
-		//#elif _1_21_11
 		if (mouseWindow.handle() != window) return;
-		//#endif
 
 		activeWidgets.clear();
-		activeWidgets.ensureCapacity(mouse.minecraft.screen.children().size());
+		activeWidgets.ensureCapacity(getScreen(mouse.minecraft).children().size());
 
-		activeWidgets.addAll(findAllDeepestWidgetsAt(mouse.minecraft.screen.children(), mouse.xpos() * (double)mouseWindow.getGuiScaledWidth() / (double)mouseWindow.getScreenWidth(), mouse.ypos() * (double)mouseWindow.getGuiScaledHeight() / (double)mouseWindow.getScreenHeight()));
+		activeWidgets.addAll(findAllDeepestWidgetsAt(getScreen(mouse.minecraft).children(), mouse.xpos() * (double)mouseWindow.getGuiScaledWidth() / (double)mouseWindow.getScreenWidth(), mouse.ypos() * (double)mouseWindow.getGuiScaledHeight() / (double)mouseWindow.getScreenHeight()));
 
 		selectorMode = false;
 		System.out.println("GUI Inspector: OFF");
@@ -801,7 +681,7 @@ public class GUIInspector implements ClientModInitializer {
 				}
 				widgets.setSelectedNode(selectedWidget, s -> {
 					if (!s) {
-						System.out.println(getMappedClassName(mouse.minecraft.screen));
+						System.out.println(getMappedClassName(getScreen(mouse.minecraft)));
 //								logWidgets(scr.children());
 					}
 				});
@@ -809,5 +689,13 @@ public class GUIInspector implements ClientModInitializer {
 		}
 		activeWidgets.clear();
 		ci.cancel();
+	}
+
+	public static Screen getScreen(Minecraft mc) {
+		//#if _26_1
+		return mc.screen;
+		//#elif _26_2
+//$$			return mc.gui.screen();
+		//#endif
 	}
 }

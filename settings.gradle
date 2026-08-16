@@ -11,5 +11,5 @@ pluginManagement {
 
 rootProject.name = 'guiinspector'
 
-include '1.20.1'
-include '1.21.11'
+include '26.1'
+include '26.2'

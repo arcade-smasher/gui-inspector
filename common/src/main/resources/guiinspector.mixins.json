@@ -3,21 +3,16 @@
   "package": "com.arcadesmasher.guiinspector.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
-    "ClickableWidgetAccessor",
     "DrawContextMixin",
     "GameRendererMixin",
     "MinecraftClientMixin",
     "MouseMixin",
     "SlotAccessor",
-    "newsodium.AbstractWidgetAccessor",
-    "newsodium.AbstractWidgetMixin",
-    "newsodium.CenteredFlatWidgetAccessor",
-    "newsodium.Dim2iAccessor",
-    "newsodium.FlatButtonWidgetAccessor",
-    "oldsodium.AbstractWidgetAccessor",
-    "oldsodium.Dim2iAccessor",
-    "oldsodium.FlatButtonWidgetAccessor",
-    "oldsodium.FlatButtonWidgetMixin"
+    "sodium.AbstractWidgetAccessor",
+    "sodium.AbstractWidgetMixin",
+    "sodium.CenteredFlatWidgetAccessor",
+    "sodium.Dim2iAccessor",
+    "sodium.FlatButtonWidgetAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

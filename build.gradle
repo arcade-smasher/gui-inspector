@@ -1,26 +1,23 @@
-import net.fabricmc.loom.task.RemapJarTask
-import net.fabricmc.loom.task.RemapSourcesJarTask
-
 import java.util.zip.ZipFile
 
 plugins {
-	id 'net.fabricmc.fabric-loom-remap' version "${loom_version}" apply false
+	id 'net.fabricmc.fabric-loom' version "${loom_version}" apply false
 	id 'maven-publish'
 }
 
 subprojects {
-	apply plugin: 'net.fabricmc.fabric-loom-remap'
+	apply plugin: 'net.fabricmc.fabric-loom'
 	apply plugin: 'maven-publish'
 
-	version = project.mod_version
+	version = "${project.mod_version}+mc${project.minecraft_version}"
 	group = project.maven_group
 
 	base {
-		archivesName = "${project.archives_base_name}-${project.mod_version}+mc${project.minecraft_version}"
+		archivesName = project.archives_base_name
 	}
 
 	// preprocessor is very messy, should probably use a preexisting one but whatever
-	// make SURE you comment non-1.21.11 code (and ONLY non-1.21.11) in an //#if block with //$$
+	// make SURE you comment non-26.1 code (and ONLY non-26.1) in an //#if block with //$$
 
 	def preprocessedDir = layout.buildDirectory.dir("preprocessed/java")
 
@@ -110,7 +107,7 @@ subprojects {
 		main {
 			compileClasspath += sourceSets.stub.output
 			java {
-				if (project.name == '1.21.11') {
+				if (project.name == '26.1') {
 					srcDir rootProject.file('common/src/main/java')
 				} else {
 					srcDir preprocessedDir
@@ -127,8 +124,8 @@ subprojects {
 	}
 
 	afterEvaluate {
-		sourceSets.stub.compileClasspath += configurations.named("minecraftNamedCompile").get()
-		sourceSets.stub.compileClasspath += configurations.named("modCompileClasspath").get()
+		def mcFiles = sourceSets.main.compileClasspath.files - sourceSets.stub.output.files
+		sourceSets.stub.compileClasspath += project.files(mcFiles)
 	}
 
 	loom {
@@ -140,15 +137,13 @@ subprojects {
 
 	dependencies {
 		minecraft "com.mojang:minecraft:${project.minecraft_version}"
-		mappings loom.officialMojangMappings()
-		modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
-
-		implementation "net.fabricmc:mapping-io:0.6.1"
-		include "net.fabricmc:mapping-io:0.6.1"
+		implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+		implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
 		compileOnly sourceSets.stub.output
 
-		modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+//		stubCompileOnly "net.fabricmc:fabric-loader:${project.loader_version}"
+//		stubCompileOnly "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 	}
 
 	processResources {
@@ -164,22 +159,13 @@ subprojects {
 	}
 
 	tasks.withType(JavaCompile).configureEach {
-		it.options.release = 17
-	}
-
-	tasks.withType(RemapJarTask).configureEach {
-		addNestedDependencies = true
-		archiveVersion.set("")
-	}
-
-	tasks.withType(RemapSourcesJarTask).configureEach {
-		archiveVersion.set("")
+		it.options.release = 25
 	}
 
 	java {
 		withSourcesJar()
-		sourceCompatibility = JavaVersion.VERSION_17
-		targetCompatibility = JavaVersion.VERSION_17
+		sourceCompatibility = JavaVersion.VERSION_25
+		targetCompatibility = JavaVersion.VERSION_25
 	}
 
 	jar {

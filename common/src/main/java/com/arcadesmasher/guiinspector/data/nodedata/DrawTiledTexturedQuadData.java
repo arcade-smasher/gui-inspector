@@ -1,7 +1,7 @@
 package com.arcadesmasher.guiinspector.data.nodedata;
 
 import com.arcadesmasher.guiinspector.GUIInspector;
-import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
 
 public final class DrawTiledTexturedQuadData extends com.arcadesmasher.guiinspector.data.nodedata.AlternatingDisplayNodeData implements com.arcadesmasher.guiinspector.data.nodedata.DrawCallData {
 	private final int x0;
@@ -9,8 +9,8 @@ public final class DrawTiledTexturedQuadData extends com.arcadesmasher.guiinspec
 	private final int x1;
 	private final int y1;
 
-	public DrawTiledTexturedQuadData(String yarnLabel, String yarnSimpleLabel, String mojmapLabel, String mojmapSimpleLabel, Object[] yarnDetails, Object[] mojmapDetails, int x0, int y0, int x1, int y1) {
-		super(yarnLabel, yarnSimpleLabel, mojmapLabel, mojmapSimpleLabel, yarnDetails, mojmapDetails);
+	public DrawTiledTexturedQuadData(String label, String simpleLabel, Object[] details, int x0, int y0, int x1, int y1) {
+		super(label, simpleLabel, details);
 		this.x0 = x0;
 		this.y0 = y0;
 		this.x1 = x1;
@@ -18,7 +18,7 @@ public final class DrawTiledTexturedQuadData extends com.arcadesmasher.guiinspec
 	}
 
 	@Override
-	public void drawOutline(GuiGraphics context) {
+	public void drawOutline(GuiGraphicsExtractor context) {
 		GUIInspector.drawOutline(context, this.x0, this.y0, this.x1 - this.x0, this.y1 - this.y0);
 	}
 
