@@ -12,11 +12,11 @@ subprojects {
 	apply plugin: 'net.fabricmc.fabric-loom-remap'
 	apply plugin: 'maven-publish'
 
-	version = project.mod_version
+	version = "${project.mod_version}+mc${project.minecraft_version}"
 	group = project.maven_group
 
 	base {
-		archivesName = "${project.archives_base_name}-${project.mod_version}+mc${project.minecraft_version}"
+		archivesName = project.archives_base_name
 	}
 
 	// preprocessor is very messy, should probably use a preexisting one but whatever
@@ -169,11 +169,6 @@ subprojects {
 
 	tasks.withType(RemapJarTask).configureEach {
 		addNestedDependencies = true
-		archiveVersion.set("")
-	}
-
-	tasks.withType(RemapSourcesJarTask).configureEach {
-		archiveVersion.set("")
 	}
 
 	java {
