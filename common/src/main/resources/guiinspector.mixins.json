@@ -5,6 +5,7 @@
   "client": [
     "DrawContextMixin",
     "GameRendererMixin",
+    "GuiMixin",
     "MinecraftClientMixin",
     "MouseMixin",
     "SlotAccessor",

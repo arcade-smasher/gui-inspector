@@ -18,6 +18,7 @@ import net.minecraft.world.inventory.Slot;
 @Mixin(GameRenderer.class)
 public class GameRendererMixin {
 
+	//#if _26_1
 	@Inject(
 			method = "extractGui",
 			at = @At(
@@ -47,4 +48,5 @@ public class GameRendererMixin {
 			if (userObj instanceof DrawCallData data) data.drawOutline(graphics);
 		}
 	}
+	//#endif
 }
