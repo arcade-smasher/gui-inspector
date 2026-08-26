@@ -5,6 +5,8 @@ import com.arcadesmasher.guiinspector.data.nodedata.*;
 import org.joml.Matrix4f;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
+import org.lwjgl.opengl.GL12C;
+import org.lwjgl.system.MemoryUtil;
 import org.spongepowered.asm.mixin.*;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -24,10 +26,14 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
+
+import static org.lwjgl.opengl.GL11.*;
+import static org.lwjgl.opengl.GL12C.GL_CLAMP_TO_EDGE;
 
 @Mixin(GuiGraphics.class)
 public class DrawContextMixin {
@@ -37,76 +43,94 @@ public class DrawContextMixin {
 		try {
 			Minecraft client = Minecraft.getInstance();
 			Optional<Resource> resourceOptional = client.getResourceManager().getResource(id);
-
 			if (resourceOptional.isEmpty()) {
 				System.err.println("Resource not found: " + id);
 				return null;
 			}
-
 			Resource resource = resourceOptional.get();
-
 			try (InputStream stream = resource.open()) {
 				return ImageIO.read(stream);
 			}
-
 		} catch (Exception e) {
 			e.printStackTrace();
 			return null;
 		}
 	}
-
 	@Unique
-	private static BufferedImage getImageFromIdentifier(ResourceLocation id, float u1, float v1, float u2, float v2) {
-
-		BufferedImage image = getImageFromIdentifier(id);
-
+	private TextureSnapshot getTextureSnapshot(BufferedImage image, float u1, float v1, float u2, float v2) {
 		if (image == null) return null;
-
-		return getImageSubregion(image, u1, v1, u2, v2);
+		TextureSnapshot snapshot = getImageSubregionSnapshot(image, u1, v1, u2, v2);
+		if (snapshot == null) snapshot = getImageSubregionSnapshot(image, 0, 0, 1, 1);
+		return snapshot;
 	}
-
+	// make sure to clean up resulting glId
+	// returns a glId for the custom gl context; will only work in that context
 	@Unique
-	private static BufferedImage getImageSubregion(BufferedImage image, float u1, float v1, float u2, float v2) {
-
-		if (image == null) return null;
-
+	private TextureSnapshot getImageSubregionSnapshot(BufferedImage image, float u1, float v1, float u2, float v2) {
 		int width = image.getWidth();
 		int height = image.getHeight();
-
-		u1 = Math.max(0f, Math.min(1f, u1));
-		v1 = Math.max(0f, Math.min(1f, v1));
-		u2 = Math.max(0f, Math.min(1f, u2));
-		v2 = Math.max(0f, Math.min(1f, v2));
-
-		// UV to pixel coords
-		int x1 = (int)(u1 * width);
-		int y1 = (int)(v1 * height);
-		int x2 = (int)(u2 * width);
-		int y2 = (int)(v2 * height);
-
-		// handle flipped UVs
-		int minX = Math.min(x1, x2);
-		int minY = Math.min(y1, y2);
-		int maxX = Math.max(x1, x2);
-		int maxY = Math.max(y1, y2);
-
-		int subWidth = maxX - minX;
-		int subHeight = maxY - minY;
-
+		float uMin = Math.max(0f, Math.min(u1, u2));
+		float uMax = Math.min(1f, Math.max(u1, u2));
+		float vMin = Math.max(0f, Math.min(v1, v2));
+		float vMax = Math.min(1f, Math.max(v1, v2));
+		int minX = (int)(uMin * width);
+		int minY = (int)(vMin * height);
+		int maxX = (int)(uMax * width);
+		int maxY = (int)(vMax * height);
+		int subWidth  = Math.min(maxX - minX, width - minX);
+		int subHeight = Math.min(maxY - minY, height - minY);
 		if (subWidth <= 0 || subHeight <= 0) {
 			System.err.println("Invalid UV region for: " + image);
 			return null;
 		}
-
-		// Clamp to image bounds
-		subWidth = Math.min(subWidth, width - minX);
-		subHeight = Math.min(subHeight, height - minY);
-
-		return image.getSubimage(minX, minY, subWidth, subHeight);
+		BufferedImage subregion = image.getSubimage(minX, minY, subWidth, subHeight);
+		ByteBuffer pixels = MemoryUtil.memAlloc(subWidth * subHeight * 4);
+		try {
+			int[] argbRow = new int[subWidth];
+			for (int row = 0; row < subHeight; row++) {
+				subregion.getRGB(0, row, subWidth, 1, argbRow, 0, subWidth);
+				for (int col = 0; col < subWidth; col++) {
+					int argb = argbRow[col];
+					int index = (row * subWidth + col) * 4;
+					pixels.put(index,     (byte) ((argb >> 16) & 0xFF)); // R
+					pixels.put(index + 1, (byte) ((argb >> 8)  & 0xFF)); // G
+					pixels.put(index + 2, (byte) (argb & 0xFF));         // B
+					pixels.put(index + 3, (byte) ((argb >> 24) & 0xFF)); // A
+				}
+			}
+			int destinationId = GUIInspector.treeWindow.getGlWindow().callInContext(() -> {
+				int id = glGenTextures();
+				glBindTexture(GL_TEXTURE_2D, id);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL12C.GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL12C.GL_CLAMP_TO_EDGE);
+				glTexImage2D(
+						GL_TEXTURE_2D,
+						0,
+						GL_RGBA8,
+						subWidth,
+						subHeight,
+						0,
+						GL_RGBA,
+						GL_UNSIGNED_BYTE,
+						pixels
+				);
+				glBindTexture(GL_TEXTURE_2D, 0);
+				return id;
+			});
+			return new TextureSnapshot(destinationId, subWidth, subHeight);
+		} catch (Exception e) {
+			throw new RuntimeException(e);
+		} finally {
+			MemoryUtil.memFree(pixels);
+		}
 	}
 
 	@Inject(method = "fill(Lnet/minecraft/client/renderer/RenderType;IIIIII)V", at = @At("HEAD"))
 	private void injectFill(RenderType layer, int x1, int y1, int x2, int y2, int z, int color, CallbackInfo ci) {
+		GUIInspector.totalDrawCalls++;
+		GUIInspector.totalFillDrawCalls++;
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
@@ -200,7 +224,7 @@ public class DrawContextMixin {
 							yarnDetails, mojmapDetails
 					);
 				}
-				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
+				data.setAltDisplay(!GUIInspector.useDetailedDrawCallNames);
 
 				nodes[i] = new DrawCallDataTreeBuilder(GUIInspector.buildFrameLabelNoMap(frame), data);
 			}
@@ -228,6 +252,8 @@ public class DrawContextMixin {
 
 	@Unique
 	private void injectDrawText(Font textRenderer, Supplier<String> getText, IntSupplier getWidth, int x, int y, int color, boolean shadow) {
+		GUIInspector.totalDrawCalls++;
+		GUIInspector.totalTextDrawCalls++;
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(2);
@@ -320,7 +346,7 @@ public class DrawContextMixin {
 							yarnDetails, mojmapDetails
 					);
 				}
-				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
+				data.setAltDisplay(!GUIInspector.useDetailedDrawCallNames);
 
 				nodes[i] = new DrawCallDataTreeBuilder(GUIInspector.buildFrameLabelNoMap(frame), data);
 			}
@@ -332,6 +358,8 @@ public class DrawContextMixin {
 	// source args seem to be named wrong. they say u1, v1, u2, v2, but it's actually u1, u2, v1, v2
 	@Inject(method = "innerBlit(Lnet/minecraft/resources/ResourceLocation;IIIIIFFFF)V", at = @At("HEAD"))
 	private void injectDrawTexturedQuad1(ResourceLocation texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, CallbackInfo ci) {
+		GUIInspector.totalDrawCalls++;
+		GUIInspector.totalTexturedQuadDrawCalls++;
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
@@ -342,18 +370,10 @@ public class DrawContextMixin {
 
 			BufferedImage image = getImageFromIdentifier(texture);
 
-			BufferedImage subregion = getImageSubregion(image, u1, v1, u2, v2);
+			TextureSnapshot textureCopy = getTextureSnapshot(image, u1, v1, u2, v2);
 
-			int texWidth;
-			int texHeight;
-
-			if (subregion == null) {
-				texWidth = 0;
-				texHeight = 0;
-			} else {
-				texWidth  = image.getWidth();
-				texHeight = image.getHeight();
-			}
+			int texWidth = image != null ? image.getWidth()  : 0;
+			int texHeight = image != null ? image.getHeight() : 0;
 
 			int px1 = (int)(u1 * texWidth);
 			int py1 = (int)(v1 * texHeight);
@@ -396,7 +416,7 @@ public class DrawContextMixin {
 				details[j++] = "";
 				details[j++] = "Image:";
 				details[j++] = String.format("\tSize: %d x %d", texWidth, texHeight);
-				details[j++] = subregion == null ? "[Could not display image]" : subregion;
+				details[j++] = textureCopy != null ? textureCopy : TextureSnapshot.EMPTY;
 				details[j] = "";
 				return details;
 			};
@@ -442,7 +462,7 @@ public class DrawContextMixin {
 							yarnDetails, mojmapDetails
 					);
 				}
-				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
+				data.setAltDisplay(!GUIInspector.useDetailedDrawCallNames);
 
 				nodes[i] = new DrawCallDataTreeBuilder(GUIInspector.buildFrameLabelNoMap(frame), data);
 			}
@@ -454,6 +474,8 @@ public class DrawContextMixin {
 
 	@Inject(method = "innerBlit(Lnet/minecraft/resources/ResourceLocation;IIIIIFFFFFFFF)V", at = @At("HEAD"))
 	private void injectDrawTexturedQuad2(ResourceLocation texture, int x1, int x2, int y1, int y2, int z, float u1, float u2, float v1, float v2, float red, float green, float blue, float alpha, CallbackInfo ci) {
+		GUIInspector.totalDrawCalls++;
+		GUIInspector.totalTexturedQuadDrawCalls++;
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
@@ -464,18 +486,10 @@ public class DrawContextMixin {
 
 			BufferedImage image = getImageFromIdentifier(texture);
 
-			BufferedImage subregion = getImageSubregion(image, u1, v1, u2, v2);
+			TextureSnapshot textureCopy = getTextureSnapshot(image, u1, v1, u2, v2);
 
-			int texWidth;
-			int texHeight;
-
-			if (subregion == null) {
-				texWidth = 0;
-				texHeight = 0;
-			} else {
-				texWidth  = image.getWidth();
-				texHeight = image.getHeight();
-			}
+			int texWidth = image != null ? image.getWidth()  : 0;
+			int texHeight = image != null ? image.getHeight() : 0;
 
 			int px1 = (int)(u1 * texWidth);
 			int py1 = (int)(v1 * texHeight);
@@ -523,7 +537,7 @@ public class DrawContextMixin {
 				details[j++] = "";
 				details[j++] = "Image:";
 				details[j++] = String.format("\tSize: %d x %d", texWidth, texHeight);
-				details[j++] = subregion == null ? "[Could not display image]" : subregion;
+				details[j++] = textureCopy != null ? textureCopy : TextureSnapshot.EMPTY;
 				details[j] = "";
 				return details;
 			};
@@ -569,7 +583,7 @@ public class DrawContextMixin {
 							yarnDetails, mojmapDetails
 					);
 				}
-				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
+				data.setAltDisplay(!GUIInspector.useDetailedDrawCallNames);
 
 				nodes[i] = new DrawCallDataTreeBuilder(GUIInspector.buildFrameLabelNoMap(frame), data);
 			}
@@ -580,6 +594,8 @@ public class DrawContextMixin {
 
 	@Inject(method = "renderItem(Lnet/minecraft/world/entity/LivingEntity;Lnet/minecraft/world/level/Level;Lnet/minecraft/world/item/ItemStack;IIII)V", at = @At("HEAD"))
 	private void injectDrawItem(LivingEntity entity, Level world, ItemStack stack, int x, int y, int seed, int z, CallbackInfo ci) {
+		GUIInspector.totalDrawCalls++;
+		GUIInspector.totalItemDrawCalls++;
 		if (!GUIInspector.drawCapture) return;
 
 		List<StackWalker.StackFrame> frames = GUIInspector.getFrames(1);
@@ -659,7 +675,7 @@ public class DrawContextMixin {
 							yarnDetails, mojmapDetails
 					);
 				}
-				data.setAltDisplay(GUIInspector.drawCallNamesAreSimple);
+				data.setAltDisplay(!GUIInspector.useDetailedDrawCallNames);
 
 				nodes[i] = new DrawCallDataTreeBuilder(GUIInspector.buildFrameLabelNoMap(frame), data);
 			}

@@ -1,49 +1,70 @@
 package com.arcadesmasher.guiinspector.input;
 
-import javax.swing.*;
+import imgui.ImGui;
+import imgui.type.ImBoolean;
+import imgui.type.ImString;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.contents.TranslatableContents;
-import java.awt.*;
+
+import java.util.function.Consumer;
 import java.util.Optional;
 
-public class TextInputDialog extends com.arcadesmasher.guiinspector.input.InputDialog<Component> {
+public class TextInputDialog extends InputDialog<Component> {
 
-	private TextInputDialog(Frame parent, String title, Component init) {
-		super(parent, title);
+	private final ImString literalBuffer;
+	private final ImString translationBuffer;
+	private final ImBoolean useTranslation;
 
-		JTextField literalField = new JTextField(init.getString(), 20);
-		JTextField translatableField = new JTextField((init.getContents() instanceof TranslatableContents translatable) ? translatable.getKey() : "", 20);
-		translatableField.setEnabled(false);
+	protected TextInputDialog(String title, String label, Component initial, Consumer<Optional<Component>> callback) {
+		super(title, label, initial, callback);
 
-		JCheckBox useTranslation = new JCheckBox("Use translation key instead");
-		useTranslation.addActionListener(e -> {
-			boolean translatable = useTranslation.isSelected();
-			literalField.setEnabled(!translatable);
-			translatableField.setEnabled(translatable);
-		});
+		literalBuffer = new ImString(initial.getString(), 256);
 
-		add(new JLabel("Literal text:"));
-		add(literalField);
-		add(new JLabel("Translation key:"));
-		add(translatableField);
-		add(useTranslation);
+		String translationKey =
+				initial.getContents() instanceof TranslatableContents translatable ? translatable.getKey() : "";
 
-		submitButton.addActionListener(e -> {
-			if (useTranslation.isSelected()) {
-				result = Component.translatable(translatableField.getText());
-			} else {
-				result = Component.literal(literalField.getText());
+		translationBuffer = new ImString(translationKey, 256);
+		useTranslation = new ImBoolean(!translationKey.isEmpty());
+
+		if (useTranslation.get()) {
+			value = Component.translatable(translationKey);
+		} else {
+			value = Component.literal(literalBuffer.get());
+		}
+	}
+
+	public static void show(String title, String label, Component initial, Consumer<Optional<Component>> callback) {
+		new TextInputDialog(title, label, initial, callback).open();
+	}
+
+	public static void show(String title, String label, Consumer<Optional<Component>> callback) {
+		show(title, label, Component.empty(), callback);
+	}
+
+	@Override
+	protected void renderFields() {
+		if (ImGui.checkbox("Use translation key instead", useTranslation)) {
+			updateValue();
+		}
+
+		ImGui.setNextItemWidth(160);
+
+		if (useTranslation.get()) {
+			if (ImGui.inputText("Translation key", translationBuffer)) {
+				updateValue();
 			}
-			dispose();
-		});
+		} else {
+			if (ImGui.inputText("Literal text", literalBuffer)) {
+				updateValue();
+			}
+		}
 	}
 
-	public static Optional<Component> show(Frame parent, String title, Component init) {
-		TextInputDialog dialog = new TextInputDialog(parent, title, init);
-		return Optional.ofNullable(dialog.showDialog());
-	}
-
-	public static Optional<Component> show(Frame parent, String title) {
-		return show(parent, title, Component.empty());
+	private void updateValue() {
+		if (useTranslation.get()) {
+			value = Component.translatable(translationBuffer.get());
+		} else {
+			value = Component.literal(literalBuffer.get());
+		}
 	}
 }

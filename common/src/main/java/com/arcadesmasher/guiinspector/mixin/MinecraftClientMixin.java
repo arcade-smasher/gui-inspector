@@ -1,6 +1,8 @@
 package com.arcadesmasher.guiinspector.mixin;
 
 import com.arcadesmasher.guiinspector.GUIInspector;
+import com.arcadesmasher.guiinspector.data.nodedata.AbstractNodeData;
+import com.arcadesmasher.guiinspector.data.nodedata.TextureSnapshot;
 import com.arcadesmasher.guiinspector.tree.TreeBuilder;
 import net.minecraft.client.Minecraft;
 import org.spongepowered.asm.mixin.Mixin;
@@ -8,11 +10,14 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
+import static org.lwjgl.opengl.GL11.glDeleteTextures;
+
 @Mixin(Minecraft.class)
 public class MinecraftClientMixin {
 
 	@Inject(method = "runTick", at = @At("HEAD"))
-	private void injectRenderHead(boolean tick, CallbackInfo ci) {
+	private void injectRenderHead(boolean advanceGameTime, CallbackInfo ci) {
+		GUIInspector.totalFramesRendered++;
 		if (GUIInspector.pendingCapture) {
 			GUIInspector.pendingCapture = false;
 			GUIInspector.drawCapture = true;
@@ -22,17 +27,51 @@ public class MinecraftClientMixin {
 	}
 
 	@Inject(method = "runTick", at = @At("RETURN"))
-	private void injectRenderReturn(boolean tick, CallbackInfo ci) {
+	private void injectRenderReturn(boolean advanceGameTime, CallbackInfo ci) {
 		if (GUIInspector.drawCapture) {
-			if (GUIInspector.drawCallViewIsTree) GUIInspector.treeBuilder.buildTree(GUIInspector.drawCalls);
-			else GUIInspector.treeBuilder.buildFlatTree(GUIInspector.drawCalls);
+			if (GUIInspector.drawCallViewIsTree) {
+				GUIInspector.treeBuilder.buildTree(GUIInspector.drawCalls);
+			} else {
+				GUIInspector.treeBuilder.buildFlatTree(GUIInspector.drawCalls);
+			}
 
-			javax.swing.SwingUtilities.invokeLater(() -> {
-				for (int i = GUIInspector.drawCalls.getTree().getRowCount() - 1; i > 0; i--) {
-					GUIInspector.drawCalls.getTree().collapseRow(i);
+			GUIInspector.drawCalls.collapseAll();
+			GUIInspector.drawCalls.getSideMenuEntries().forEach(entry -> {
+				if (entry instanceof TextureSnapshot textureSnapshot && textureSnapshot.glId() > 0) {
+					glDeleteTextures(textureSnapshot.glId());
 				}
 			});
+			GUIInspector.drawCalls.clearSideMenu();
+
+			Minecraft mc = Minecraft.getInstance();
+			Object[] details = {
+					"Frame: " + GUIInspector.totalFramesRendered,
+					"",
+					"Active screen: " + (mc.screen == null ? "None" : GUIInspector.getMappedClassName(mc.screen)),
+					"",
+					"Dimensions:",
+					"\tSize (width, height): " + mc.getWindow().getWidth() + "x" + mc.getWindow().getHeight(),
+					"\tScaled size (width, height): " + mc.getWindow().getGuiScaledWidth() + "x" + mc.getWindow().getGuiScaledHeight(),
+					"",
+					"Draw calls: " + GUIInspector.totalDrawCalls,
+					"Draw calls (fill): " + GUIInspector.totalFillDrawCalls,
+					"Draw calls (text): " + GUIInspector.totalTextDrawCalls,
+					"Draw calls (blit): " + GUIInspector.totalTexturedQuadDrawCalls,
+					"Draw calls (tiledBlit): " + GUIInspector.totalTiledTexturedQuadDrawCalls,
+					"Draw calls (item): " + GUIInspector.totalItemDrawCalls
+			};
+			GUIInspector.drawCalls.getRootNode().setUserObject(new AbstractNodeData("Capture", "Capture", details, details) {});
+
+			GUIInspector.drawCalls.setSelectedNode(GUIInspector.drawCalls.getRootNode());
+			GUIInspector.drawCalls.expandNode(GUIInspector.drawCalls.getRootNode());
 		}
+
 		GUIInspector.drawCapture = false;
+		GUIInspector.totalDrawCalls = 0;
+		GUIInspector.totalFillDrawCalls = 0;
+		GUIInspector.totalTextDrawCalls = 0;
+		GUIInspector.totalTexturedQuadDrawCalls = 0;
+		GUIInspector.totalTiledTexturedQuadDrawCalls = 0;
+		GUIInspector.totalItemDrawCalls = 0;
 	}
 }

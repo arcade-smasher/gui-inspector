@@ -1,84 +1,87 @@
 package com.arcadesmasher.guiinspector.input;
 
-import javax.swing.*;
-import java.awt.*;
-import java.text.ParseException;
+import imgui.ImGui;
 
-public abstract class InputDialog<T> extends JDialog {
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.Optional;
+import java.util.function.Consumer;
 
-	protected JButton submitButton = new JButton("OK");
-	protected JButton cancelButton = new JButton("Cancel");
+public abstract class InputDialog<T> {
 
-	protected T result = null;
+	private static final Deque<InputDialog<?>> queue = new ArrayDeque<>();
+	private static boolean popupOpenedThisFrame = false;
 
-	protected InputDialog(Frame parent, String title) {
-		super(parent, title, true);
-		setLayout(new FlowLayout());
+	private final String title;
+	private final String label;
+	protected T value;
+	private final Consumer<Optional<T>> callback;
 
-		cancelButton.addActionListener(e -> {
-			result = null;
-			dispose();
-		});
-
-		add(submitButton);
-		add(cancelButton);
-
-		setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+	protected InputDialog(String title, String label, T initial, Consumer<Optional<T>> callback) {
+		this.title = title;
+		this.label = label;
+		this.value = initial;
+		this.callback = callback;
 	}
 
-	protected void validateSpinner(JSpinner spinner) {
-		((JSpinner.NumberEditor) spinner.getEditor()).getTextField().getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-			public void insertUpdate(javax.swing.event.DocumentEvent e) { SwingUtilities.invokeLater(this::checkValid); }
-			public void removeUpdate(javax.swing.event.DocumentEvent e) { SwingUtilities.invokeLater(this::checkValid); }
-			public void changedUpdate(javax.swing.event.DocumentEvent e) { SwingUtilities.invokeLater(this::checkValid); }
-
-			private void checkValid() {
-				try {
-					spinner.commitEdit();
-					submitButton.setEnabled(true);
-				} catch (ParseException ex) {
-					submitButton.setEnabled(false);
-				}
-			}
-		});
+	public void open() {
+		queue.add(this);
 	}
 
-	protected void validateComboBox(JComboBox<?> comboBox) {
-		if (!comboBox.isEditable()) {
-			comboBox.addActionListener(e -> submitButton.setEnabled(comboBox.getSelectedItem() != null));
-			return;
+	protected abstract void renderFields();
+
+	protected boolean isValid() {
+		return true;
+	}
+
+	public static void renderActive() {
+		if (queue.isEmpty()) return;
+		InputDialog<?> dialog = queue.peek();
+
+		String popupId = dialog.title + "##inputdialog";
+		if (!popupOpenedThisFrame) {
+			ImGui.openPopup(popupId);
+			popupOpenedThisFrame = true;
 		}
 
-		JTextField editor = (JTextField) comboBox.getEditor().getEditorComponent();
+		boolean[] open = {true};
+		boolean closed = false;
+		boolean submitted = false;
 
-		editor.getDocument().addDocumentListener(new javax.swing.event.DocumentListener() {
-			public void insertUpdate(javax.swing.event.DocumentEvent e) { SwingUtilities.invokeLater(this::checkValid); }
-			public void removeUpdate(javax.swing.event.DocumentEvent e) { SwingUtilities.invokeLater(this::checkValid); }
-			public void changedUpdate(javax.swing.event.DocumentEvent e) { SwingUtilities.invokeLater(this::checkValid); }
+		if (ImGui.beginPopupModal(popupId)) {
+			ImGui.text(dialog.label);
+			ImGui.sameLine();
+			dialog.renderFields();
+			ImGui.separator();
 
-			private void checkValid() {
-				Object input = editor.getText();
-				boolean valid = false;
-
-				ComboBoxModel<?> model = comboBox.getModel();
-
-				for (int i = 0; i < model.getSize(); i++) {
-					Object item = model.getElementAt(i);
-					if (item != null && item.toString().equals(input)) {
-						valid = true;
-						break;
-					}
-				}
-
-				submitButton.setEnabled(valid);
+			boolean valid = dialog.isValid();
+			if (!valid) ImGui.beginDisabled();
+			if (ImGui.button("OK")) {
+				closed = true;
+				submitted = true;
 			}
-		});
+			if (!valid) ImGui.endDisabled();
+			ImGui.sameLine();
+			if (ImGui.button("Cancel")) {
+				closed = true;
+			}
+
+			if (closed) ImGui.closeCurrentPopup();
+			ImGui.endPopup();
+		}
+
+		if (!open[0]) closed = true;
+
+		if (closed) {
+			queue.poll();
+			popupOpenedThisFrame = false;
+			finish(dialog, submitted);
+		}
 	}
 
-	protected T showDialog() {
-		pack();
-		setLocationRelativeTo(getOwner());
-		setVisible(true);
-		return result;
+	@SuppressWarnings("unchecked")
+	private static <T> void finish(InputDialog<?> dialog, boolean submitted) {
+		InputDialog<T> typed = (InputDialog<T>) dialog;
+		typed.callback.accept(submitted ? Optional.ofNullable(typed.value) : Optional.empty());
 	}
 }

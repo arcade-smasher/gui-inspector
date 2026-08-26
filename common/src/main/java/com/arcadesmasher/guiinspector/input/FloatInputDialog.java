@@ -1,45 +1,28 @@
 package com.arcadesmasher.guiinspector.input;
 
-import javax.swing.*;
-import java.awt.*;
-import java.text.ParseException;
+import imgui.type.ImFloat;
+
 import java.util.Optional;
+import java.util.function.Consumer;
 
-public class FloatInputDialog extends com.arcadesmasher.guiinspector.input.InputDialog<Float> {
+public class FloatInputDialog extends InputDialog<Float> {
 
-	private FloatInputDialog(Frame parent, String title, String label, float init, float min, float max) {
-		super(parent, title);
+	private final ImFloat buffer;
 
-		SpinnerNumberModel model = new SpinnerNumberModel(init, min, max, 0.1F);
-		JSpinner spinner = new JSpinner(model);
-		validateSpinner(spinner);
-
-		add(new JLabel(label));
-		add(spinner);
-
-		submitButton.addActionListener(e -> {
-			try {
-				spinner.commitEdit();
-			} catch (ParseException ex) {
-				Toolkit.getDefaultToolkit().beep();
-				return;
-			}
-
-			result = ((Number) spinner.getValue()).floatValue();
-			dispose();
-		});
+	protected FloatInputDialog(String title, String label, float initial, Consumer<Optional<Float>> callback) {
+		super(title, label, initial, callback);
+		this.buffer = new ImFloat(initial);
 	}
 
-	public static Optional<Float> show(Frame parent, String title, String label, float init, float min, float max) {
-		FloatInputDialog dialog = new FloatInputDialog(parent, title, label, init, min, max);
-		return Optional.ofNullable(dialog.showDialog());
+	public static void show(String title, String label, float initial, Consumer<Optional<Float>> callback) {
+		new FloatInputDialog(title, label, initial, callback).open();
 	}
 
-	public static Optional<Float> show(Frame parent, String title, String label, float init) {
-		return show(parent, title, label, init, Float.MIN_VALUE, Float.MAX_VALUE);
-	}
-
-	public static Optional<Float> show(Frame parent, String title, String label) {
-		return show(parent, title, label, 0);
+	@Override
+	protected void renderFields() {
+		imgui.ImGui.setNextItemWidth(160);
+		if (imgui.ImGui.inputFloat("##value", buffer)) {
+			value = buffer.get();
+		}
 	}
 }
