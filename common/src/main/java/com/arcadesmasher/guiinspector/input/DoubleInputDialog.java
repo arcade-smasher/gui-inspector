@@ -1,45 +1,28 @@
 package com.arcadesmasher.guiinspector.input;
 
-import javax.swing.*;
-import java.awt.*;
-import java.text.ParseException;
+import imgui.type.ImDouble;
+
 import java.util.Optional;
+import java.util.function.Consumer;
 
-public class DoubleInputDialog extends com.arcadesmasher.guiinspector.input.InputDialog<Double> {
+public class DoubleInputDialog extends InputDialog<Double> {
 
-	private DoubleInputDialog(Frame parent, String title, String label, double init, double min, double max) {
-		super(parent, title);
+	private final ImDouble buffer;
 
-		SpinnerNumberModel model = new SpinnerNumberModel(init, min, max, 0.1D);
-		JSpinner spinner = new JSpinner(model);
-		validateSpinner(spinner);
-
-		add(new JLabel(label));
-		add(spinner);
-
-		submitButton.addActionListener(e -> {
-			try {
-				spinner.commitEdit();
-			} catch (ParseException ex) {
-				Toolkit.getDefaultToolkit().beep();
-				return;
-			}
-
-			result = ((Number) spinner.getValue()).doubleValue();
-			dispose();
-		});
+	protected DoubleInputDialog(String title, String label, double initial, Consumer<Optional<Double>> callback) {
+		super(title, label, initial, callback);
+		this.buffer = new ImDouble(initial);
 	}
 
-	public static Optional<Double> show(Frame parent, String title, String label, double init, double min, double max) {
-		DoubleInputDialog dialog = new DoubleInputDialog(parent, title, label, init, min, max);
-		return Optional.ofNullable(dialog.showDialog());
+	public static void show(String title, String label, double initial, Consumer<Optional<Double>> callback) {
+		new DoubleInputDialog(title, label, initial, callback).open();
 	}
 
-	public static Optional<Double> show(Frame parent, String title, String label, double init) {
-		return show(parent, title, label, init, Double.MIN_VALUE, Double.MAX_VALUE);
-	}
-
-	public static Optional<Double> show(Frame parent, String title, String label) {
-		return show(parent, title, label, 0);
+	@Override
+	protected void renderFields() {
+		imgui.ImGui.setNextItemWidth(160);
+		if (imgui.ImGui.inputDouble("##value", buffer)) {
+			value = buffer.get();
+		}
 	}
 }

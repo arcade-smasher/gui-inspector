@@ -1,31 +1,28 @@
 package com.arcadesmasher.guiinspector.input;
 
-import javax.swing.*;
-import java.awt.*;
+import imgui.type.ImString;
+
 import java.util.Optional;
+import java.util.function.Consumer;
 
-public class StringInputDialog extends com.arcadesmasher.guiinspector.input.InputDialog<String> {
+public class StringInputDialog extends InputDialog<String> {
 
-	private StringInputDialog(Frame parent, String title, String label, String init) {
-		super(parent, title);
+	private final ImString buffer;
 
-		JTextField textField = new JTextField(init, 20);
-
-		add(new JLabel(label));
-		add(textField);
-
-		submitButton.addActionListener(e -> {
-			result = textField.getText();
-			dispose();
-		});
+	protected StringInputDialog(String title, String label, String initial, Consumer<Optional<String>> callback) {
+		super(title, label, initial, callback);
+		this.buffer = new ImString(initial, 256);
 	}
 
-	public static Optional<String> show(Frame parent, String title, String label, String init) {
-		StringInputDialog dialog = new StringInputDialog(parent, title, label, init);
-		return Optional.ofNullable(dialog.showDialog());
+	public static void show(String title, String label, String initial, Consumer<Optional<String>> callback) {
+		new StringInputDialog(title, label, initial, callback).open();
 	}
 
-	public static Optional<String> show(Frame parent, String title, String label) {
-		return show(parent, title, label, "");
+	@Override
+	protected void renderFields() {
+		imgui.ImGui.setNextItemWidth(160);
+		if (imgui.ImGui.inputText("##value", buffer)) {
+			value = buffer.get();
+		}
 	}
 }

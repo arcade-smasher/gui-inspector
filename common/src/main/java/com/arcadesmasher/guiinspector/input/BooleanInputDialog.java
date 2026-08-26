@@ -1,33 +1,28 @@
 package com.arcadesmasher.guiinspector.input;
 
-import javax.swing.*;
-import java.awt.*;
+import imgui.type.ImBoolean;
+
 import java.util.Optional;
+import java.util.function.Consumer;
 
-public class BooleanInputDialog extends com.arcadesmasher.guiinspector.input.InputDialog<Boolean> {
+public class BooleanInputDialog extends InputDialog<Boolean> {
 
-	private BooleanInputDialog(Frame parent, String title, String label, boolean init) {
-		super(parent, title);
+	private final ImBoolean buffer;
 
-		JCheckBox checkBox = new JCheckBox(label, init);
-
-		add(checkBox);
-
-		submitButton.addActionListener(e -> {
-			result = checkBox.isSelected();
-			dispose();
-		});
+	protected BooleanInputDialog(String title, String label, boolean initial, Consumer<Optional<Boolean>> callback) {
+		super(title, label, initial, callback);
+		this.buffer = new ImBoolean(initial);
 	}
 
-	public static Optional<Boolean> show(Frame parent, String title, String label, boolean init) {
-
-		BooleanInputDialog dialog = new BooleanInputDialog(parent, title, label, init);
-
-		return Optional.ofNullable(dialog.showDialog());
+	public static void show(String title, String label, boolean initial, Consumer<Optional<Boolean>> callback) {
+		new BooleanInputDialog(title, label, initial, callback).open();
 	}
 
-	public static Optional<Boolean> show(Frame parent, String title, String label) {
-
-		return show(parent, title, label, false);
+	@Override
+	protected void renderFields() {
+		imgui.ImGui.setNextItemWidth(160);
+		if (imgui.ImGui.checkbox("##value", buffer)) {
+			value = buffer.get();
+		}
 	}
 }

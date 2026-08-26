@@ -13,7 +13,8 @@
     "sodium.AbstractWidgetMixin",
     "sodium.CenteredFlatWidgetAccessor",
     "sodium.Dim2iAccessor",
-    "sodium.FlatButtonWidgetAccessor"
+    "sodium.FlatButtonWidgetAccessor",
+    "VulkanGpuTextureAccessor"
   ],
   "injectors": {
     "defaultRequire": 1

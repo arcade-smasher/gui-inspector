@@ -1,11 +1,9 @@
 package com.arcadesmasher.guiinspector;
 
-import com.arcadesmasher.guiinspector.Dim2iAccessor;
-import com.arcadesmasher.guiinspector.DimensionedMirror;
-import com.arcadesmasher.guiinspector.WidthHeightRegistry;
 import com.arcadesmasher.guiinspector.data.FriendlyDisplay;
 import com.arcadesmasher.guiinspector.data.nodedata.AlternatingDisplayNodeData;
 import com.arcadesmasher.guiinspector.data.nodedata.NodeData;
+import com.arcadesmasher.guiinspector.data.nodedata.TextureSnapshot;
 import com.arcadesmasher.guiinspector.data.rowdata.DefaultRowData;
 import com.arcadesmasher.guiinspector.data.rowdata.RowData;
 import com.arcadesmasher.guiinspector.input.*;
@@ -15,7 +13,11 @@ import com.arcadesmasher.guiinspector.sodiumcompat.SodiumCompatNew;
 import com.arcadesmasher.guiinspector.tree.TreeBuilder;
 import com.arcadesmasher.guiinspector.tree.TreePanel;
 import com.arcadesmasher.guiinspector.tree.TreeWindow;
+import imgui.ImGui;
+import imgui.ImVec2;
+import imgui.flag.ImGuiStyleVar;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Minecraft;
@@ -34,15 +36,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-import javax.swing.*;
 import javax.swing.event.TreeSelectionEvent;
 import javax.swing.tree.DefaultMutableTreeNode;
-import java.awt.*;
-import java.awt.event.ActionListener;
 import java.util.*;
 import java.util.List;
-import java.util.function.BiFunction;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
+
+import static org.lwjgl.opengl.GL11.glDeleteTextures;
 
 public class GUIInspector implements ClientModInitializer {
 	public static final String MOD_ID = "guiinspector";
@@ -60,10 +61,17 @@ public class GUIInspector implements ClientModInitializer {
 	public static TreeBuilder treeBuilder;
 
 	public static boolean drawCallViewIsTree = true;
-	public static boolean drawCallNamesAreSimple = true;
+	public static boolean useDetailedDrawCallNames = false;
 
 	public static boolean drawCapture = false;
 	public static boolean pendingCapture = false;
+	public static long totalFramesRendered = 0;
+	public static int totalDrawCalls = 0;
+	public static int totalFillDrawCalls = 0;
+	public static int totalTextDrawCalls = 0;
+	public static int totalTexturedQuadDrawCalls = 0;
+	public static int totalTiledTexturedQuadDrawCalls = 0;
+	public static int totalItemDrawCalls = 0;
 
 	public static boolean sodiumLoaded;
 	public static SodiumCompat sodiumCompat;
@@ -74,6 +82,24 @@ public class GUIInspector implements ClientModInitializer {
 	public static Consumer<Object> removeHook;
 	public static Consumer<Object> toggleVisibilityHook;
 
+	@SuppressWarnings("unchecked")
+	private static final Map<Class<?>, BiConsumer<RowData<?>, Consumer<Optional<Object>>>> modifyValueHandlers = Map.of(
+			Integer.class, (rd, cb) -> IntInputDialog.show("Modify Value", rd.label(), ((RowData<Integer>) rd).getter().get(),
+					result -> cb.accept(result.map(v -> (Object) v))),
+			Float.class, (rd, cb) -> FloatInputDialog.show("Modify Value", rd.label(), ((RowData<Float>) rd).getter().get(),
+					result -> cb.accept(result.map(v -> (Object) v))),
+			Double.class, (rd, cb) -> DoubleInputDialog.show("Modify Value", rd.label(), ((RowData<Double>) rd).getter().get(),
+					result -> cb.accept(result.map(v -> (Object) v))),
+			Boolean.class, (rd, cb) -> BooleanInputDialog.show("Modify Value", rd.label(), ((RowData<Boolean>) rd).getter().get(),
+					result -> cb.accept(result.map(v -> (Object) v))),
+			String.class, (rd, cb) -> StringInputDialog.show("Modify Value", rd.label(), ((RowData<String>) rd).getter().get(),
+					result -> cb.accept(result.map(v -> (Object) v))),
+			Component.class, (rd, cb) -> TextInputDialog.show("Modify Value", rd.label(), ((RowData<Component>) rd).getter().get(),
+					result -> cb.accept(result.map(v -> (Object) v))),
+			ItemStack.class, (rd, cb) -> ItemStackInputDialog.show("Modify Value", rd.label(), ((RowData<ItemStack>) rd).getter().get(),
+					result -> cb.accept(result.map(v -> (Object) v)))
+	);
+
 	@Override
 	public void onInitializeClient() {
 
@@ -81,12 +107,6 @@ public class GUIInspector implements ClientModInitializer {
 		if (sodiumLoaded) {
 			sodiumCompat = new SodiumCompatNew();
 		}
-
-		System.setProperty("java.awt.headless", "false");
-
-		try {
-			UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
-		} catch (Exception ignored) {}
 
 		treeWindow = TreeWindow.getInstance();
 		widgets = treeWindow.addTab("Widgets");
@@ -150,98 +170,31 @@ public class GUIInspector implements ClientModInitializer {
 
 		widgets.addSelectionListener(selectionListener::accept);
 
-		JButton removeBtn = new JButton("Remove");
-		JButton modifyValueBtn = new JButton("Modify Value");
-		JButton refreshBtn = new JButton("Refresh");
-		JButton inspectBtn = new JButton("Inspect");
-
-		widgets.getToolbar().add(removeBtn);
-		widgets.getToolbar().add(modifyValueBtn);
-		widgets.getToolbar().add(refreshBtn);
-		widgets.getToolbar().add(inspectBtn);
-
-		removeBtn.addActionListener(e -> {
-			DefaultMutableTreeNode selected = widgets.getSelectedNode();
-			if (selected == null || selected == widgets.getRootNode()) {
-				JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
-						"Select a node to remove.", "No Selection",
-						JOptionPane.WARNING_MESSAGE);
-				return;
-			}
-			int result = JOptionPane.showConfirmDialog(SwingUtilities.getWindowAncestor(widgets),
-					"This may potentially break things. Are you sure?",
-					"Warning",
-					JOptionPane.YES_NO_OPTION,
-					JOptionPane.WARNING_MESSAGE
-			);
-			if (result == JOptionPane.YES_OPTION) {
-				if (removeHook != null) {
-					removeHook.accept(selected.getUserObject());
-				}
-			}
-			widgets.removeNode(selected);
-		});
-
-		@SuppressWarnings("unchecked")
-		Map<Class<?>, BiFunction<RowData<?>, Frame, Optional<?>>> handlers = Map.of(
-				Integer.class, (rd, frame) -> IntInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Integer>) rd).getter().get()),
-				Float.class, (rd, frame) -> FloatInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Float>) rd).getter().get()),
-				Double.class, (rd, frame) -> DoubleInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Double>) rd).getter().get()),
-				Boolean.class, (rd, frame) -> BooleanInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<Boolean>) rd).getter().get()),
-				String.class, (rd, frame) -> StringInputDialog.show(frame, "Modify Value", rd.label(), ((RowData<String>) rd).getter().get()),
-				Component.class, (rd, frame) -> TextInputDialog.show(frame, "Modify Value", ((RowData<Component>) rd).getter().get()),
-				ItemStack.class, (rd, frame) -> ItemStackInputDialog.show(frame, "Modify Value", ((RowData<ItemStack>) rd).getter().get())
-		);
-
-		modifyValueBtn.addActionListener(e -> {
-			Object selectedValue = widgets.getSideMenuList().getSelectedValue();
-			if (selectedValue == null) {
-				JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
-						"Select an entry in the details pane to modify.", "No Selection",
-						JOptionPane.WARNING_MESSAGE);
-				return;
-			}
-			if (selectedValue instanceof RowData<?> rd) { // TODO: Close edit dialog when different option gets selected/entries are cleared. Not necessarily a problem but misleading to the user
-				var handler = handlers.get(rd.type());
-				if (handler != null) {
-					DefaultMutableTreeNode nodeAtOpen = widgets.getSelectedNode();
-					@SuppressWarnings("unchecked")
-					Optional<Object> result = (Optional<Object>) handler.apply(rd, treeWindow.getFrame()); // not a leak; rd is dereferenced after lambda returns
-					result.ifPresent(r -> {
-						if (widgets.getSelectedNode() != nodeAtOpen) return;
-						@SuppressWarnings("unchecked")
-						RowData<Object> typedRow = (RowData<Object>) rd;
-						typedRow.setter().accept(r);
-						selectionListener.accept(null);
-					});
-				} else {
-					JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
-							"Unhandled type: " + getMappedClassName(rd.type()) + ". Please report this to the developer along with the error message.", "Unhandled Type",
-							JOptionPane.WARNING_MESSAGE);
-					LOGGER.error("Unhandled type: {}. Please report this to the developer along with the error message.", getMappedClassName(rd.type()));
-				}
-			} else {
-				JOptionPane.showMessageDialog(SwingUtilities.getWindowAncestor(widgets),
-						"Unmodifiable entry.", "Unmodifiable",
-						JOptionPane.WARNING_MESSAGE);
+		widgets.setToolbarRenderer(() -> {
+			if (ImGui.button("Remove")) onRemoveWidget();
+			ImGui.sameLine();
+			if (ImGui.button("Modify Value")) onModifyValue();
+			ImGui.sameLine();
+			if (ImGui.button("Refresh")) { if (refreshHook != null) refreshHook.run(); }
+			ImGui.sameLine();
+			if (ImGui.button(selectorMode ? "Inspect (ON)" : "Inspect")) {
+				selectorMode = !selectorMode;
+				System.out.println("GUI Inspector: " + (selectorMode ? "ON" : "OFF"));
 			}
 		});
 
-		inspectBtn.addActionListener(e -> {
-			selectorMode = !selectorMode;
-			System.out.println("GUI Inspector: " + (selectorMode ? "ON" : "OFF"));
-		});
+		widgets.sideMenuActivationCallback = (entry) -> {
+			onModifyValue();
+		};
 
-		refreshBtn.addActionListener(e -> {
-			if (refreshHook != null) {
-				refreshHook.run();
-			}
-		});
-
-
-		drawCalls.getRootNode().setUserObject((FriendlyDisplay) () -> "Draw Calls");
+		drawCalls.getRootNode().setUserObject((FriendlyDisplay) () -> "Capture");
 
 		drawCalls.addSelectionListener(e -> {
+			drawCalls.getSideMenuEntries().forEach(entry -> {
+				if (entry instanceof TextureSnapshot textureSnapshot && textureSnapshot.glId() > 0) {
+					glDeleteTextures(textureSnapshot.glId());
+				}
+			});
 			drawCalls.clearSideMenu();
 			DefaultMutableTreeNode selectedNode = drawCalls.getSelectedNode();
 			if (selectedNode == null || selectedNode.getUserObject() == null) return;
@@ -250,78 +203,18 @@ public class GUIInspector implements ClientModInitializer {
 			}
 		});
 
-		JButton captureBtn = new JButton("Capture");
-		JButton namesSwitchBtn = new JButton("Detailed names");
-		JButton viewSwitchBtn = new JButton("Linear view");
-		JButton clearBtn = new JButton("Clear");
-
-		drawCalls.getToolbar().add(captureBtn);
-		drawCalls.getToolbar().add(namesSwitchBtn);
-		drawCalls.getToolbar().add(viewSwitchBtn);
-		drawCalls.getToolbar().add(clearBtn);
-
-		captureBtn.addActionListener(e -> {
-			if (JOptionPane.showConfirmDialog(
-					SwingUtilities.getWindowAncestor(drawCalls),
-					"This will clear the currently captured draw calls. Are you sure?",
-					"Confirmation",
-					JOptionPane.OK_CANCEL_OPTION,
-					JOptionPane.WARNING_MESSAGE
-			) == JOptionPane.CANCEL_OPTION) return;
-			System.out.println("Capturing!");
-			drawCalls.showSideMenu();
-			drawCalls.clear();
-			pendingCapture = true;
-		});
-
-		namesSwitchBtn.addActionListener(e -> {
-			if (treeBuilder == null) return;
-			if (drawCallNamesAreSimple) {
-				drawCallNamesAreSimple = false;
-				namesSwitchBtn.setText("Simple names");
-			} else {
-				drawCallNamesAreSimple = true;
-				namesSwitchBtn.setText("Detailed names");
-			}
-			Enumeration<?> enumeration = drawCalls.getRootNode().depthFirstEnumeration();
-			while (enumeration.hasMoreElements()) {
-				DefaultMutableTreeNode node = (DefaultMutableTreeNode) enumeration.nextElement();
-				if (node.getUserObject() instanceof AlternatingDisplayNodeData alternatingDisplayNodeData) {
-					alternatingDisplayNodeData.setAltDisplay(drawCallNamesAreSimple);
-					drawCalls.getTreeModel().nodeChanged(node);
-				}
-			}
-		});
-
-		viewSwitchBtn.addActionListener(e -> {
-			if (treeBuilder == null) return;
-			drawCalls.clear();
-			if (drawCallViewIsTree) {
-				drawCallViewIsTree = false;
-				viewSwitchBtn.setText("Tree view");
-				treeBuilder.buildFlatTree(drawCalls);
-			} else {
-				drawCallViewIsTree = true;
-				viewSwitchBtn.setText("Linear view");
-				treeBuilder.buildTree(drawCalls);
-			}
-			SwingUtilities.invokeLater(() -> {
-				for (int i = GUIInspector.drawCalls.getTree().getRowCount() - 1; i > 0; i--) {
-					GUIInspector.drawCalls.getTree().collapseRow(i);
-				}
-			});
-		});
-
-		clearBtn.addActionListener(e -> {
-			if (JOptionPane.showConfirmDialog(
-					SwingUtilities.getWindowAncestor(drawCalls),
-					"This will clear the currently captured draw calls. Are you sure?",
-					"Confirmation",
-					JOptionPane.OK_CANCEL_OPTION,
-					JOptionPane.WARNING_MESSAGE
-			) == JOptionPane.CANCEL_OPTION) return;
-			drawCalls.hideSideMenu();
-			drawCalls.clear();
+		drawCalls.setToolbarRenderer(() -> {
+			if (ImGui.button("Capture")) onCapture();
+			ImGui.sameLine();
+			ImGui.pushStyleVar(ImGuiStyleVar.ItemSpacing, new ImVec2(0.0f, 0.0f));
+			if (ImGui.button("Detailed names")) onToggleNames();
+			ImGui.sameLine();
+			if (ImGui.checkbox("##detailednames", useDetailedDrawCallNames)) onToggleNames();
+			ImGui.popStyleVar(1);
+			ImGui.sameLine();
+			if (ImGui.button(drawCallViewIsTree ? "Linear view" : "Tree view")) onToggleView();
+			ImGui.sameLine();
+			if (ImGui.button("Clear")) onClearDrawCalls();
 		});
 
 		treeWindow.show();
@@ -334,7 +227,99 @@ public class GUIInspector implements ClientModInitializer {
 //			}
 //		});
 
+
+		ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
+			treeWindow.start();
+		});
+		ClientLifecycleEvents.CLIENT_STOPPING.register(client -> {
+			treeWindow.stop();
+		});
+
 		ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> afterInit(client, screen));
+	}
+
+	private void onRemoveWidget() {
+		DefaultMutableTreeNode selected = widgets.getSelectedNode();
+		if (selected == null || selected == widgets.getRootNode()) {
+			Popups.message("No Selection", "Select a node to remove.");
+			return;
+		}
+		Popups.confirm("Warning", "This may potentially break things. Are you sure?", confirmed -> {
+			if (confirmed && removeHook != null) {
+				removeHook.accept(selected.getUserObject());
+			}
+			widgets.removeNode(selected);
+		});
+	}
+
+	private void onModifyValue() {
+		Object selectedValue = widgets.getSelectedSideMenuEntry();
+		if (selectedValue == null) {
+			Popups.message("No Selection", "Select an entry in the details pane to modify.");
+			return;
+		}
+		if (!(selectedValue instanceof RowData<?> rd)) {
+			Popups.message("Unmodifiable", "Unmodifiable entry.");
+			return;
+		}
+
+		var handler = modifyValueHandlers.get(rd.type());
+		if (handler == null) {
+			Popups.message("Error", "Unhandled type: " + getMappedClassName(rd.type()) + ". Please report this to the developer along with the error message.");
+			LOGGER.error("Unhandled type: {}. Please report this to the developer along with the error message.", getMappedClassName(rd.type()));
+			return;
+		}
+
+		DefaultMutableTreeNode nodeAtOpen = widgets.getSelectedNode();
+		// TODO: close the edit dialog automatically if a different entry gets selected, or the side menu is cleared
+		handler.accept(rd, result -> result.ifPresent(r -> {
+			if (widgets.getSelectedNode() != nodeAtOpen) return;
+			@SuppressWarnings("unchecked")
+			RowData<Object> typedRow = (RowData<Object>) rd;
+			typedRow.setter().accept(r);
+			selectionListener.accept(null);
+		}));
+	}
+
+	private void onCapture() {
+		Popups.confirm("Confirmation", "This will clear the currently captured draw calls. Are you sure?", confirmed -> {
+			if (!confirmed) return;
+			System.out.println("Capturing!");
+			drawCalls.showSideMenu();
+			drawCalls.clear();
+			pendingCapture = true;
+		});
+	}
+
+	private void onToggleNames() {
+		if (treeBuilder == null) return;
+		useDetailedDrawCallNames = !useDetailedDrawCallNames;
+		Enumeration<?> enumeration = drawCalls.getRootNode().depthFirstEnumeration();
+		while (enumeration.hasMoreElements()) {
+			DefaultMutableTreeNode node = (DefaultMutableTreeNode) enumeration.nextElement();
+			if (node.getUserObject() instanceof AlternatingDisplayNodeData alternatingDisplayNodeData) {
+				alternatingDisplayNodeData.setAltDisplay(!useDetailedDrawCallNames);
+			}
+		}
+	}
+
+	private void onToggleView() {
+		if (treeBuilder == null) return;
+		drawCalls.clear();
+		drawCallViewIsTree = !drawCallViewIsTree;
+
+		if (!drawCallViewIsTree) treeBuilder.buildFlatTree(drawCalls);
+		else treeBuilder.buildTree(drawCalls);
+
+		drawCalls.collapseAll();
+	}
+
+	private void onClearDrawCalls() {
+		Popups.confirm("Confirmation", "This will clear the currently captured draw calls. Are you sure?", confirmed -> {
+			if (!confirmed) return;
+			drawCalls.hideSideMenu();
+			drawCalls.clear();
+		});
 	}
 
 	public static String getMappedClassName(Object object) {
@@ -350,15 +335,9 @@ public class GUIInspector implements ClientModInitializer {
 	}
 
 	private <T> Consumer<T> warnBreakingSetter(Consumer<T> setter) {
-		return object -> {
-			if (JOptionPane.showConfirmDialog(SwingUtilities.getWindowAncestor(widgets),
-					"This may potentially break things. Are you sure?",
-					"Warning",
-					JOptionPane.YES_NO_OPTION,
-					JOptionPane.WARNING_MESSAGE) == JOptionPane.YES_OPTION) {
-				setter.accept(object);
-			}
-		};
+		return object -> Popups.confirm("Warning", "This may potentially break things. Are you sure?", confirmed -> {
+			if (confirmed) setter.accept(object);
+		});
 	}
 
 	private void afterInit(Minecraft client, Screen screen) {
@@ -377,12 +356,7 @@ public class GUIInspector implements ClientModInitializer {
 							try {
 								it.remove();
 							} catch (UnsupportedOperationException e) {
-								JOptionPane.showMessageDialog(
-										null,
-										"The element cannot be removed. The containing list is immutable.",
-										"Cannot Remove",
-										JOptionPane.WARNING_MESSAGE
-								);
+								Popups.message("Cannot Remove", "The element cannot be removed. The containing list is immutable.");
 								return;
 							}
 						} else if (child instanceof ContainerEventHandler pe) {
@@ -403,6 +377,7 @@ public class GUIInspector implements ClientModInitializer {
 			System.out.println("refresh");
 
 			widgets.clear();
+			widgets.clearSideMenu();
 
 			if (getScreen(client) != screen) {
 				if (getScreen(client) == null) return;

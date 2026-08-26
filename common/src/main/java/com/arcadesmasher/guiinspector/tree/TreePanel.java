@@ -1,178 +1,103 @@
 package com.arcadesmasher.guiinspector.tree;
 
 import com.arcadesmasher.guiinspector.GUIInspector;
+import com.arcadesmasher.guiinspector.data.AbstractFriendlyDisplay;
 import com.arcadesmasher.guiinspector.data.FriendlyDisplay;
-import org.jetbrains.annotations.NotNull;
 
-import javax.swing.*;
+import com.arcadesmasher.guiinspector.data.nodedata.TextureSnapshot;
+import imgui.ImGui;
+import imgui.flag.ImGuiCond;
+import imgui.flag.ImGuiKey;
+import imgui.flag.ImGuiTreeNodeFlags;
+import imgui.flag.ImGuiWindowFlags;
+
+import javax.swing.event.TreeSelectionEvent;
 import javax.swing.event.TreeSelectionListener;
-import javax.swing.tree.*;
-import java.awt.*;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.StringSelection;
-import java.awt.datatransfer.Transferable;
-import java.awt.datatransfer.UnsupportedFlavorException;
-import java.awt.event.ActionEvent;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.TreePath;
+
 import java.awt.image.BufferedImage;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.function.Consumer;
 
-// everything should be thread-safe... as well as TreeWindow
-public class TreePanel extends JPanel {
+public class TreePanel {
 
-	private final DefaultMutableTreeNode rootNode;
-	private final DefaultTreeModel treeModel;
-	private final JTree tree;
-
-	public JPanel toolbar;
-
-	private final JPanel sideMenu;
-	private final DefaultListModel<Object> sideMenuModel;
-	private final JList<Object> sideMenuList;
-	private final JSplitPane splitPane;
-
-	public TreePanel() {
-		super(new BorderLayout());
-
-		rootNode = new DefaultMutableTreeNode("Root");
-		treeModel = new DefaultTreeModel(rootNode);
-		tree = new JTree(treeModel);
-		tree.setRootVisible(true);
-		tree.setShowsRootHandles(true);
-		tree.setCellRenderer(new DefaultTreeCellRenderer() {
-			@Override
-			public Component getTreeCellRendererComponent(JTree tree, Object value, boolean selected,
-														  boolean expanded, boolean leaf, int row, boolean hasFocus) {
-				if (value instanceof DefaultMutableTreeNode node) {
-					if (node.getUserObject() instanceof FriendlyDisplay friendlyDisplay) {
-						value = friendlyDisplay.display();
-					} else {
-						value = GUIInspector.getMappedClassName(node.getUserObject());
-					}
-				}
-				return super.getTreeCellRendererComponent(tree, value, selected, expanded, leaf, row, hasFocus);
-			}
-		});
-
-		tree.getSelectionModel().setSelectionMode(TreeSelectionModel.SINGLE_TREE_SELECTION);
-
-		JScrollPane scrollPane = new JScrollPane(tree);
-
-		toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT));
-
-		sideMenuModel = new DefaultListModel<>();
-		sideMenuList = new JList<>(sideMenuModel);
-		sideMenuList.setTransferHandler(new TransferHandler() {
-			@Override
-			protected Transferable createTransferable(JComponent c) {
-				JList<?> list = (JList<?>) c;
-				Object selectedValue = list.getSelectedValue();
-
-				if (selectedValue instanceof BufferedImage image) {
-					return new Transferable() {
-						@Override
-						public DataFlavor[] getTransferDataFlavors() {
-							return new DataFlavor[]{DataFlavor.imageFlavor};
-						}
-
-						@Override
-						public boolean isDataFlavorSupported(DataFlavor flavor) {
-							return DataFlavor.imageFlavor.equals(flavor);
-						}
-
-						@Override
-						public @NotNull Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
-							if (!isDataFlavorSupported(flavor)) {
-								throw new UnsupportedFlavorException(flavor);
-							}
-							return image;
-						}
-					};
-				} else if (selectedValue instanceof FriendlyDisplay friendlyDisplay) {
-					return new StringSelection(friendlyDisplay.display());
-				} else {
-					return new StringSelection(selectedValue.toString());
-				}
-			}
-
-			@Override
-			public int getSourceActions(JComponent c) {
-				return COPY;
-			}
-		});
-		InputMap im = sideMenuList.getInputMap(JComponent.WHEN_FOCUSED);
-		ActionMap am = sideMenuList.getActionMap();
-		im.put(KeyStroke.getKeyStroke("ctrl C"), "copy");
-		am.put("copy", new AbstractAction() {
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				TransferHandler th = sideMenuList.getTransferHandler();
-				th.exportToClipboard(sideMenuList, Toolkit.getDefaultToolkit().getSystemClipboard(), TransferHandler.COPY);
-			}
-		});
-		sideMenuList.setFixedCellHeight(-1);
-		sideMenuList.setCellRenderer(new DefaultListCellRenderer() {
-			@Override
-			public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-				super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-				if (value instanceof BufferedImage bufferedImage) {
-					setText(null);
-					setIcon(new ImageIcon(bufferedImage));
-				} else if (value instanceof FriendlyDisplay friendlyDisplay) {
-					setText(friendlyDisplay.display());
-					setIcon(null);
-				} else {
-					setText(value.toString());
-					setIcon(null);
-				}
-				return this;
-			}
-		});
-		sideMenu = new JPanel(new BorderLayout());
-		sideMenu.add(new JLabel("Details"), BorderLayout.NORTH);
-		sideMenu.add(new JScrollPane(sideMenuList), BorderLayout.CENTER);
-		sideMenu.setPreferredSize(new Dimension(200, 0));
-
-		splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, scrollPane, sideMenu);
-		splitPane.setResizeWeight(1.0); // tree takes remaining space
-		splitPane.setDividerLocation(250);
-
-		add(toolbar, BorderLayout.NORTH);
-		add(splitPane, BorderLayout.CENTER);
+	private enum FocusArea {
+		TREE,
+		DETAILS
 	}
 
+	private FocusArea focusArea = FocusArea.TREE;
+
+	private final DefaultMutableTreeNode rootNode = new DefaultMutableTreeNode("Root");
+
+	private final Queue<Runnable> pendingMutations = new ConcurrentLinkedQueue<>();
+
+	private final List<TreeSelectionListener> selectionListeners = new ArrayList<>();
+	private volatile DefaultMutableTreeNode selectedNode;
+
+	private final Set<DefaultMutableTreeNode> expandedNodes = Collections.newSetFromMap(new ConcurrentHashMap<>());
+
+	private final List<Object> sideMenuEntries = new ArrayList<>();
+	private volatile boolean sideMenuVisible = true;
+	private int sideMenuSelectedIndex = -1;
+
+	private float sideMenuWidth = 220f;
+	private static final float MIN_TREE_WIDTH = 100f;
+	private static final float MIN_SIDE_WIDTH = 150f;
+	private static final float SPLITTER_WIDTH = 6f;
+
+	private volatile Runnable toolbarRenderer;
+
+	public Consumer<Object> sideMenuActivationCallback;
+
+	public TreePanel() {}
+
 	public void addSelectionListener(TreeSelectionListener listener) {
-		tree.addTreeSelectionListener(listener);
+		selectionListeners.add(listener);
 	}
 
 	public DefaultMutableTreeNode addNode(Object userObject) {
-		DefaultMutableTreeNode node = new DefaultMutableTreeNode(userObject);
-		SwingUtilities.invokeLater(() -> {
-			treeModel.insertNodeInto(node, rootNode, rootNode.getChildCount());
-			expandAll();
-		});
-		return node;
+		return addChildNode(null, userObject);
 	}
 
 	public DefaultMutableTreeNode addChildNode(DefaultMutableTreeNode parent, Object userObject) {
-		if (parent == null) return addNode(userObject);
 		DefaultMutableTreeNode node = new DefaultMutableTreeNode(userObject);
-		SwingUtilities.invokeLater(() -> {
-			treeModel.insertNodeInto(node, parent, parent.getChildCount());
-			tree.expandPath(new TreePath(treeModel.getPathToRoot(parent)));
+		DefaultMutableTreeNode actualParent = parent == null ? rootNode : parent;
+		pendingMutations.add(() -> {
+			actualParent.add(node);
+			expandedNodes.add(actualParent);
 		});
 		return node;
 	}
 
 	public void removeNode(DefaultMutableTreeNode node) {
 		if (node == rootNode) return;
-		SwingUtilities.invokeLater(() -> treeModel.removeNodeFromParent(node));
+		pendingMutations.add(node::removeFromParent);
 	}
 
 	public void clear() {
-		SwingUtilities.invokeLater(() -> {
+		pendingMutations.add(() -> {
 			rootNode.removeAllChildren();
-			treeModel.reload();
+			expandedNodes.clear();
+			selectedNode = null;
 		});
+	}
+
+	public boolean isNodeVisible(DefaultMutableTreeNode node) {
+		if (node == null) return false;
+		if (node.getPreviousNode() == null) return true; // has to be visible; it's the root
+		return isNodeExpanded(node.getPreviousNode());
+	}
+
+	public boolean isNodeExpanded(DefaultMutableTreeNode node) {
+		return expandedNodes.contains(node);
 	}
 
 	public DefaultMutableTreeNode findNode(Object target) {
@@ -180,7 +105,7 @@ public class TreePanel extends JPanel {
 	}
 
 	public static DefaultMutableTreeNode findNode(DefaultMutableTreeNode node, Object target) {
-		if (node.getUserObject().equals(target)) {
+		if (node.getUserObject() != null && node.getUserObject().equals(target)) {
 			return node;
 		}
 		for (int i = 0; i < node.getChildCount(); i++) {
@@ -192,9 +117,7 @@ public class TreePanel extends JPanel {
 	}
 
 	public DefaultMutableTreeNode getSelectedNode() {
-		TreePath path = tree.getSelectionPath();
-		if (path == null) return null;
-		return (DefaultMutableTreeNode) path.getLastPathComponent();
+		return selectedNode;
 	}
 
 	public void setSelectedNode(DefaultMutableTreeNode node) {
@@ -202,60 +125,318 @@ public class TreePanel extends JPanel {
 	}
 
 	public void setSelectedNode(DefaultMutableTreeNode node, Consumer<Boolean> callback) {
-		SwingUtilities.invokeLater(() -> {
-			if (node == null) {
-				tree.clearSelection();
-				if (callback != null) callback.accept(false);
-				return;
+		pendingMutations.add(() -> {
+			DefaultMutableTreeNode old = selectedNode;
+			selectedNode = node;
+			if (node != null) {
+				DefaultMutableTreeNode p = (DefaultMutableTreeNode) node.getParent();
+				while (p != null) {
+					expandedNodes.add(p);
+					p = (DefaultMutableTreeNode) p.getParent();
+				}
 			}
+			fireSelectionChanged(old, node);
+			if (callback != null) callback.accept(true);
+		});
+	}
 
-			TreePath path = new TreePath(treeModel.getPathToRoot(node));
-			tree.setSelectionPath(path);
-			tree.scrollPathToVisible(path);
-			boolean success = tree.getSelectionPath() != null && tree.getSelectionPath().equals(path);
-			if (callback != null) callback.accept(success);
+	public void expandNode(DefaultMutableTreeNode node) {
+		pendingMutations.add(() -> {
+			expandedNodes.add(node);
 		});
 	}
 
 	public void showSideMenu() {
-		SwingUtilities.invokeLater(() -> sideMenu.setVisible(true));
+		sideMenuVisible = true;
 	}
 
 	public void hideSideMenu() {
-		SwingUtilities.invokeLater(() -> sideMenu.setVisible(false));
+		sideMenuVisible = false;
 	}
 
 	public void toggleSideMenu() {
-		SwingUtilities.invokeLater(() -> sideMenu.setVisible(!sideMenu.isVisible()));
+		sideMenuVisible = !sideMenuVisible;
 	}
 
 	public void clearSideMenu() {
-		SwingUtilities.invokeLater(sideMenuModel::clear);
+		pendingMutations.add(sideMenuEntries::clear);
 	}
 
 	public void addSideMenuEntry(Object entry) {
-		SwingUtilities.invokeLater(() -> sideMenuModel.addElement(entry));
+		pendingMutations.add(() -> sideMenuEntries.add(entry));
 	}
 
-	public void setSideMenuEntries(java.util.List<Object> entries) {
-		SwingUtilities.invokeLater(() -> {
-			sideMenuModel.clear();
-			for (Object entry : entries) {
-				sideMenuModel.addElement(entry);
-			}
+	public void setSideMenuEntries(List<Object> entries) {
+		pendingMutations.add(() -> {
+			sideMenuEntries.clear();
+			sideMenuEntries.addAll(entries);
 		});
 	}
 
+	public List<Object> getSideMenuEntries() {
+		return sideMenuEntries;
+	}
 
-	private void expandAll() {
-		for (int i = 0; i < tree.getRowCount(); i++) {
-			tree.expandRow(i);
+	public void setToolbarRenderer(Runnable renderer) {
+		this.toolbarRenderer = renderer;
+	}
+
+	public DefaultMutableTreeNode getRootNode() {
+		return rootNode;
+	}
+
+	public Object getSelectedSideMenuEntry() {
+		if (sideMenuSelectedIndex < 0 || sideMenuSelectedIndex >= sideMenuEntries.size()) return null;
+		return sideMenuEntries.get(sideMenuSelectedIndex);
+	}
+
+	public void collapseAll() {
+		pendingMutations.add(expandedNodes::clear);
+	}
+
+	void render() {
+		Runnable r;
+		while ((r = pendingMutations.poll()) != null) {
+			r.run();
+		}
+
+		if (toolbarRenderer != null) {
+			toolbarRenderer.run();
+			ImGui.separator();
+		}
+
+		if (!sideMenuVisible) {
+			ImGui.beginChild("##tree_area", 0, 0, false, ImGuiWindowFlags.HorizontalScrollbar);
+
+			renderNode(rootNode);
+
+			ImGui.endChild();
+			return;
+		}
+
+		float availableWidth = ImGui.getContentRegionAvailX();
+
+		float maxSideWidth = availableWidth - MIN_TREE_WIDTH - SPLITTER_WIDTH;
+		sideMenuWidth = Math.max(MIN_SIDE_WIDTH, Math.min(sideMenuWidth, maxSideWidth));
+
+		float treeWidth = availableWidth - sideMenuWidth - SPLITTER_WIDTH;
+
+		ImGui.beginChild("##tree_area", treeWidth, 0, false, ImGuiWindowFlags.HorizontalScrollbar);
+
+		if (ImGui.isWindowHovered() && ImGui.isMouseClicked(0)) focusArea = FocusArea.TREE;
+
+		// starting to regret switching to imgui
+		if (focusArea == FocusArea.TREE && selectedNode != null) {
+			if (ImGui.isKeyPressed(ImGuiKey.UpArrow)) {
+				DefaultMutableTreeNode current = selectedNode;
+				if (current != null) {
+					DefaultMutableTreeNode prevSibling = current.getPreviousSibling();
+					if (prevSibling != null) {
+						DefaultMutableTreeNode target = prevSibling;
+						while (isNodeExpanded(target) && target.getChildCount() > 0) {
+							target = (DefaultMutableTreeNode) target.getLastChild();
+						}
+						setSelectedNode(target);
+					} else {
+						DefaultMutableTreeNode parent = (DefaultMutableTreeNode) current.getParent();
+						if (parent != null) {
+							setSelectedNode(parent);
+						}
+					}
+				}
+			} else if (ImGui.isKeyPressed(ImGuiKey.DownArrow)) {
+				DefaultMutableTreeNode current = selectedNode;
+				if (current != null) {
+					DefaultMutableTreeNode child = current.getNextNode();
+					if (child != null && isNodeExpanded(current)) {
+						setSelectedNode(child);
+					} else {
+						DefaultMutableTreeNode node = current;
+						DefaultMutableTreeNode target = null;
+						while (node != null) {
+							DefaultMutableTreeNode sibling = node.getNextSibling();
+							if (sibling != null) {
+								target = sibling;
+								break;
+							}
+							node = (DefaultMutableTreeNode) node.getParent();
+						}
+						if (target != null) {
+							setSelectedNode(target);
+						}
+					}
+				}
+			}
+		}
+
+		renderNode(rootNode);
+
+		ImGui.endChild();
+
+		ImGui.sameLine(0, 0);
+
+		ImGui.invisibleButton("##splitter", SPLITTER_WIDTH, ImGui.getContentRegionAvailY());
+
+		if (ImGui.isItemActive()) {
+			sideMenuWidth -= ImGui.getIO().getMouseDeltaX();
+		}
+
+		if (ImGui.isItemHovered() || ImGui.isItemActive()) {
+			ImGui.setMouseCursor(imgui.flag.ImGuiMouseCursor.ResizeEW);
+		}
+
+		ImGui.sameLine(0, 0);
+
+		ImGui.beginChild("##side_menu", 0, 0, true, ImGuiWindowFlags.HorizontalScrollbar);
+
+		if (ImGui.isWindowHovered() && ImGui.isMouseClicked(0)) focusArea = FocusArea.DETAILS;
+
+		if (focusArea == FocusArea.DETAILS && !sideMenuEntries.isEmpty()) {
+			if (ImGui.isKeyPressed(ImGuiKey.UpArrow)) {
+				if (sideMenuSelectedIndex <= 0) {
+					sideMenuSelectedIndex = sideMenuEntries.size() - 1;
+				} else {
+					sideMenuSelectedIndex--;
+				}
+			}
+
+			if (ImGui.isKeyPressed(ImGuiKey.DownArrow)) {
+				if (sideMenuSelectedIndex < 0 || sideMenuSelectedIndex >= sideMenuEntries.size() - 1) {
+					sideMenuSelectedIndex = 0;
+				} else {
+					sideMenuSelectedIndex++;
+				}
+			}
+		}
+
+		if (focusArea == FocusArea.DETAILS && sideMenuSelectedIndex >= 0 && ImGui.isKeyPressed(ImGuiKey.Enter)) {
+			activateSideMenuEntry(sideMenuSelectedIndex);
+		}
+
+		ImGui.text("Details");
+		ImGui.separator();
+
+		for (int i = 0; i < sideMenuEntries.size(); i++) {
+			renderSideMenuEntry(i, sideMenuEntries.get(i));
+		}
+
+		ImGui.endChild();
+	}
+
+	private void renderSideMenuEntry(int index, Object entry) {
+		String popupId = "##side_ctx" + index;
+
+		if (entry instanceof TextureSnapshot image) {
+			if (image != TextureSnapshot.EMPTY) {
+				ImGui.image(
+						image.glId(),
+						image.width(),
+						image.height()
+				);
+				return;
+			} else {
+				entry = (FriendlyDisplay) () -> "[Could not display image]";
+			}
+		}
+
+		String display = entry instanceof FriendlyDisplay fd
+				? fd.display()
+				: String.valueOf(entry);
+
+		if (ImGui.selectable(
+				display + "##side" + index,
+				sideMenuSelectedIndex == index
+		)) {
+			sideMenuSelectedIndex = index;
+		}
+
+		if (ImGui.isItemHovered() && ImGui.isMouseDoubleClicked(0)) {
+			activateSideMenuEntry(sideMenuSelectedIndex);
+		}
+
+		if (ImGui.beginPopupContextItem(popupId)) {
+			if (ImGui.menuItem("Copy")) {
+				ImGui.setClipboardText(display);
+			}
+			ImGui.endPopup();
 		}
 	}
 
-	public JPanel getToolbar() { return toolbar; }
-	public JList<Object> getSideMenuList() { return sideMenuList; }
-	public JTree getTree() { return tree; }
-	public DefaultTreeModel getTreeModel() { return treeModel; }
-	public DefaultMutableTreeNode getRootNode() { return rootNode; }
+	private void activateSideMenuEntry(int index) {
+		if (index < 0) return;
+
+		sideMenuSelectedIndex = index;
+
+		if (sideMenuActivationCallback != null) {
+			sideMenuActivationCallback.accept(sideMenuEntries.get(index));
+		}
+	}
+
+	private void renderNode(DefaultMutableTreeNode node) {
+		Object userObject = node.getUserObject();
+		String label = userObject instanceof FriendlyDisplay fd
+				? fd.display()
+				: String.valueOf(GUIInspector.getMappedClassName(userObject));
+
+		boolean isLeaf = node.getChildCount() == 0;
+		int flags = ImGuiTreeNodeFlags.OpenOnArrow | ImGuiTreeNodeFlags.OpenOnDoubleClick | ImGuiTreeNodeFlags.SpanAvailWidth;
+		if (isLeaf) flags |= ImGuiTreeNodeFlags.Leaf | ImGuiTreeNodeFlags.NoTreePushOnOpen;
+		if (node == selectedNode) flags |= ImGuiTreeNodeFlags.Selected;
+		if (expandedNodes.contains(node)) ImGui.setNextItemOpen(true, ImGuiCond.Once);
+
+		boolean isSelectedTreeNode = focusArea == FocusArea.TREE && node == selectedNode;
+
+		if (isSelectedTreeNode) {
+			boolean currentlyExpanded = expandedNodes.contains(node);
+			if (ImGui.isKeyPressed(ImGuiKey.Enter)) {
+				ImGui.setNextItemOpen(!currentlyExpanded, ImGuiCond.Always);
+			} else if (ImGui.isKeyPressed(ImGuiKey.RightArrow)) {
+				if (!currentlyExpanded) {
+					ImGui.setNextItemOpen(true, ImGuiCond.Always);
+				} else {
+					if (node.getNextNode() != null) {
+						setSelectedNode(node.getNextNode());
+					}
+				}
+			} else if (ImGui.isKeyPressed(ImGuiKey.LeftArrow)) {
+				if (currentlyExpanded) {
+					ImGui.setNextItemOpen(false, ImGuiCond.Always);
+				} else {
+					if (node.getPreviousNode() != null) {
+						setSelectedNode(node.getPreviousNode());
+					}
+				}
+			}
+		}
+
+		boolean open = ImGui.treeNodeEx(Long.toString(System.identityHashCode(node)), flags, label);
+
+		if (ImGui.isItemClicked()) {
+			DefaultMutableTreeNode old = selectedNode;
+			selectedNode = node;
+			fireSelectionChanged(old, node);
+		}
+
+		if (!isLeaf) {
+			if (open) {
+				expandedNodes.add(node);
+				for (int i = 0; i < node.getChildCount(); i++) {
+					renderNode((DefaultMutableTreeNode) node.getChildAt(i));
+				}
+				ImGui.treePop();
+			} else {
+				expandedNodes.remove(node);
+			}
+		}
+	}
+
+	private void fireSelectionChanged(DefaultMutableTreeNode oldNode, DefaultMutableTreeNode newNode) {
+		if (selectionListeners.isEmpty()) return;
+		TreePath oldPath = oldNode == null ? null : new TreePath(oldNode.getPath());
+		TreePath newPath = newNode == null ? null : new TreePath(newNode.getPath());
+		TreeSelectionEvent event = new TreeSelectionEvent(this, newPath, true, oldPath, newPath);
+		for (TreeSelectionListener l : selectionListeners) {
+			l.valueChanged(event);
+		}
+	}
 }

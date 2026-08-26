@@ -140,6 +140,14 @@ subprojects {
 		implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 		implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
+		include implementation("io.github.spair:imgui-java-binding:${project.imgui_version}")
+		include implementation("io.github.spair:imgui-java-lwjgl3:${project.imgui_version}") {
+			exclude group: 'org.lwjgl'
+		}
+		include implementation("io.github.spair:imgui-java-natives-windows:${project.imgui_version}")
+		include implementation("io.github.spair:imgui-java-natives-linux:${project.imgui_version}")
+		include implementation("io.github.spair:imgui-java-natives-macos:${project.imgui_version}")
+
 		compileOnly sourceSets.stub.output
 
 //		stubCompileOnly "net.fabricmc:fabric-loader:${project.loader_version}"

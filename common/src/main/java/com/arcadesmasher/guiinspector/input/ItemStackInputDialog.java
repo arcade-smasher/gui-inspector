@@ -1,63 +1,77 @@
 package com.arcadesmasher.guiinspector.input;
 
+import imgui.ImGui;
+import imgui.type.ImInt;
+import imgui.type.ImString;
 import net.minecraft.core.registries.BuiltInRegistries;
-
 import net.minecraft.resources.Identifier;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 
-import javax.swing.*;
-import java.awt.*;
-import java.text.ParseException;
 import java.util.Optional;
+import java.util.function.Consumer;
 
 public class ItemStackInputDialog extends InputDialog<ItemStack> {
 
-	private ItemStackInputDialog(Frame parent, String title, ItemStack init) {
-		super(parent, title);
+	private final ImInt count;
+	private final ImString itemId;
 
-		JComboBox<String> comboBox = new JComboBox<>(BuiltInRegistries.ITEM.keySet().stream().map(Identifier::toString).toArray(String[]::new));
+	protected ItemStackInputDialog(String title, String label, ItemStack initial, Consumer<Optional<ItemStack>> callback) {
+		super(title, label, initial, callback);
 
-		comboBox.setEditable(true);
-		comboBox.setSelectedItem(BuiltInRegistries.ITEM.getKey(init.getItem()).toString());
+		count = new ImInt(initial.getCount());
 
-		add(new JLabel("Enter count: "));
-		SpinnerNumberModel model = new SpinnerNumberModel(init.getCount(), Integer.MIN_VALUE, Integer.MAX_VALUE, 1);
-		JSpinner spinner = new JSpinner(model);
-		add(spinner);
-		validateSpinner(spinner);
-		add(new JLabel("Enter item: "));
-		add(comboBox);
-		validateComboBox(comboBox);
+		String id = BuiltInRegistries.ITEM.getKey(initial.getItem()).toString();
+		itemId = new ImString(id, 256);
 
-		submitButton.addActionListener(e -> {
-			try {
-				spinner.commitEdit();
-			} catch (ParseException ex) {
-				Toolkit.getDefaultToolkit().beep();
-				return;
-			}
-			Object selected = comboBox.getSelectedItem();
-			if (selected instanceof String str) {
-				try {
-					Identifier id = Identifier.bySeparator(str, ':');
-					result = BuiltInRegistries.ITEM.getValue(id).getDefaultInstance();
-					result.setCount((Integer) spinner.getValue());
-				} catch (Exception ex) {
-					Toolkit.getDefaultToolkit().beep();
-					return;
-				}
-			}
-			dispose();
-		});
+		updateValue();
 	}
 
-	public static Optional<ItemStack> show(Frame parent, String title, ItemStack init) {
-		ItemStackInputDialog dialog = new ItemStackInputDialog(parent, title, init);
-		return Optional.ofNullable(dialog.showDialog());
+	public static void show(String title, String label, ItemStack initial, Consumer<Optional<ItemStack>> callback) {
+		new ItemStackInputDialog(title, label, initial, callback).open();
 	}
 
-	public static Optional<ItemStack> show(Frame parent, String title) {
-		return show(parent, title, Items.AIR.getDefaultInstance());
+	public static void show(String title, String label, Consumer<Optional<ItemStack>> callback) {
+		show(title, label, Items.AIR.getDefaultInstance(), callback);
+	}
+
+	@Override
+	protected void renderFields() {
+		ImGui.text("Enter count:");
+		ImGui.setNextItemWidth(160);
+
+		if (ImGui.inputInt("##count", count)) {
+			updateValue();
+		}
+
+		ImGui.text("Enter item:");
+		ImGui.setNextItemWidth(300);
+
+		if (ImGui.inputText("##item", itemId)) {
+			updateValue();
+		}
+	}
+
+	@Override
+	protected boolean isValid() {
+		return resolveItem() != null;
+	}
+
+	private void updateValue() {
+		ItemStack stack = resolveItem();
+
+		if (stack != null) {
+			stack.setCount(count.get());
+			value = stack;
+		}
+	}
+
+	private ItemStack resolveItem() {
+		try {
+			Identifier id = Identifier.bySeparator(itemId.get(), ':');
+			return BuiltInRegistries.ITEM.getValue(id).getDefaultInstance();
+		} catch (Exception ignored) {
+			return null;
+		}
 	}
 }
